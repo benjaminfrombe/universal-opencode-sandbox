@@ -94,7 +94,9 @@ agent cannot even ask.
 The prompt uses its own permission action, `unsandboxed`, so an allow rule for
 `shell` never silently covers an escape - and you can pre-approve command
 patterns through opencode's own permission rules, which the prompt then honors
-instead of asking again. A deny rule for the action hides the tool entirely:
+instead of asking again. A deny rule for the action hides the tool entirely.
+"Always allow" on the prompt saves the exact command only - per project,
+persistently - never a blanket pattern; "Allow once" approves just that call.
 
 ```jsonc
 // opencode.jsonc

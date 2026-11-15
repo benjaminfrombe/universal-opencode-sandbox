@@ -82,10 +82,13 @@ export default Plugin.define({
     const askGuard =
       policy.unsandboxed === "ask"
         ? await context.permission.hook("evaluate", async (event) => {
-            if (event.action !== "unsandboxed" || event.effect !== "allow") return
+            if (event.action !== "unsandboxed") return
+            // The prompt must name the command: it is the only thing the user approves,
+            // and hosts render the message but not necessarily the resources.
+            event.message = `Run this command outside the sandbox: ${event.resources.join(" ")}`
+            if (event.effect !== "allow") return
             const force = () => {
               event.effect = "ask"
-              event.message = "running a command outside the sandbox needs your approval"
             }
             try {
               const session = await context.session.get({ sessionID: event.sessionID })
@@ -122,7 +125,7 @@ export default Plugin.define({
             sessionID: event.sessionID,
             action: "unsandboxed",
             resources: [escape],
-            save: ["*"],
+            save: [escape],
             metadata: { command: escape },
           })
           void log("warn", `the user approved running a command unsandboxed: ${escape}`)
@@ -145,12 +148,13 @@ export default Plugin.define({
           // Prompts the user with the exact command and waits for the reply; resolves when
           // allowed, rejects on a deny rule or a rejection. The dedicated action keeps an
           // allow rule for "shell" from silently approving an escape, and lets the user
-          // pre-approve command patterns through opencode's own permission rules.
+          // pre-approve command patterns through opencode's own permission rules. "Always
+          // allow" saves the exact command only, never a blanket pattern.
           await context.permission.assert({
             sessionID: event.sessionID,
             action: "unsandboxed",
             resources: [command],
-            save: ["*"],
+            save: [command],
             metadata: { command },
           })
           void log("warn", `the user approved running a command unsandboxed: ${command}`)

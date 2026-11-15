@@ -34,4 +34,9 @@
 ⠙[1G[0K⠹[1G[0K⠸[1G[0K[1mnpm[22m [96mnotice[39m Publishing to https://registry.npmjs.org/ with tag latest and default access
 ⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0KAuthenticate your account at:
 https://www.npmjs.com/auth/cli/64bfff6e-0304-49f7-a761-aeb3b701b088
-⠏[1G[0K[1G[0JPress ENTER to open in the browser...[38G
+⠏[1G[0K[1G[0JPress ENTER to open in the browser...[38G
+
+⠙[1G[0K[1mnpm[22m [31merror[39m [94mcode[39m E404
+⠙[1G[0K[1mnpm[22m [31merror[39m [94m404[39m Not Found - GET https://registry.npmjs.org/-/v1/done?authId=***
+⠙[1G[0K[1mnpm[22m [31merror[39m A complete log of this run can be found in: /Users/jacobsben/.npm/_logs/2026-11-15T18_23_47_147Z-debug-0.log
+⠙[1G[0K

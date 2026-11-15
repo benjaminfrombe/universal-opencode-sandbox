@@ -24,6 +24,8 @@ export interface Policy {
   readonly userCommands: boolean
   /** Tool names the agent may not call at all, with "*" as a wildcard ("paseo_*"). */
   readonly blockedTools: string[]
+  /** Commands pre-approved to run unsandboxed without a prompt, with "*" wildcards. */
+  readonly unsandboxedAllow: string[]
 }
 
 interface RawConfig {
@@ -36,6 +38,8 @@ interface RawConfig {
   sandbox_user_commands?: unknown
   /** Tool names the agent may not call at all, with "*" as a wildcard ("paseo_*"). */
   blocked_tools?: unknown
+  /** Commands pre-approved to run unsandboxed without a prompt, with "*" wildcards. */
+  unsandboxed_allow?: unknown
   projects?: Record<string, RawConfig>
 }
 
@@ -49,6 +53,7 @@ interface Merged {
   unsandboxed?: "deny" | "ask" | "allow"
   userCommands?: boolean
   blockedTools: string[]
+  unsandboxedAllow: string[]
   writableRoots: string[]
   deniedPaths: string[]
   /** True once any layer set denied_paths: the user's list then replaces the defaults. */
@@ -110,6 +115,7 @@ export const defaultPolicy: Policy = {
   unsandboxed: "deny",
   userCommands: false,
   blockedTools: [],
+  unsandboxedAllow: [],
 }
 
 /**
@@ -124,7 +130,7 @@ export function resolvePolicy(
   environment: NodeJS.ProcessEnv = process.env,
   globalFile: string = configPath(),
 ): Policy {
-  let merged: Merged = { writableRoots: [], deniedPaths: [], blockedTools: [] }
+  let merged: Merged = { writableRoots: [], deniedPaths: [], blockedTools: [], unsandboxedAllow: [] }
   const global = readConfig(globalFile)
   if (global) merged = tighten(merged, global)
   const project = global?.projects?.[workspace]
@@ -149,6 +155,7 @@ export function resolvePolicy(
     unsandboxed: merged.unsandboxed ?? "deny",
     userCommands: merged.userCommands ?? false,
     blockedTools: [...new Set(merged.blockedTools)],
+    unsandboxedAllow: [...new Set(merged.unsandboxedAllow)],
   }
 }
 
@@ -176,6 +183,9 @@ function tighten(merged: Merged, raw: RawConfig): Merged {
   if (Array.isArray(raw.blocked_tools)) {
     for (const item of raw.blocked_tools) if (typeof item === "string") merged.blockedTools.push(item)
   }
+  if (Array.isArray(raw.unsandboxed_allow)) {
+    for (const item of raw.unsandboxed_allow) if (typeof item === "string") merged.unsandboxedAllow.push(item)
+  }
   return {
     // Any layer can turn the sandbox off; all layers here are user-owned, so false wins.
     enabled: raw.enabled === undefined ? merged.enabled : raw.enabled === false ? false : merged.enabled === false ? false : true,
@@ -185,6 +195,7 @@ function tighten(merged: Merged, raw: RawConfig): Merged {
     unsandboxed: strictestUnsandboxed(merged.unsandboxed, raw.unsandboxed),
     userCommands: raw.sandbox_user_commands === true || merged.userCommands === true,
     blockedTools: merged.blockedTools,
+    unsandboxedAllow: merged.unsandboxedAllow,
     writableRoots: merged.writableRoots,
     deniedPaths: merged.deniedPaths,
     deniedPathsExplicit: merged.deniedPathsExplicit,

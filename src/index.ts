@@ -121,13 +121,16 @@ export default Plugin.define({
         // prompt naming the exact command; allow mode is pre-approved by config.
         const escape = (event.input as { command?: unknown } | undefined)?.command
         if (policy.unsandboxed === "ask" && typeof escape === "string" && escape !== "") {
-          await context.permission.assert({
-            sessionID: event.sessionID,
-            action: "unsandboxed",
-            resources: [escape],
-            metadata: { command: escape },
-          })
-          void log("warn", `the user approved running a command unsandboxed: ${escape}`)
+          const preapproved = policy.unsandboxedAllow.some((pattern) => matchesWildcard(escape, pattern))
+          if (!preapproved) {
+            await context.permission.assert({
+              sessionID: event.sessionID,
+              action: "unsandboxed",
+              resources: [escape],
+              metadata: { command: escape },
+            })
+            void log("warn", `the user approved running a command unsandboxed: ${escape}`)
+          }
         }
         return
       }
@@ -144,18 +147,23 @@ export default Plugin.define({
           throw new Error("universal-opencode-sandbox: running this command unsandboxed is not allowed")
         }
         if (policy.unsandboxed === "ask") {
-          // Prompts the user with the exact command and waits for the reply; resolves when
-          // allowed, rejects on a deny rule or a rejection. The dedicated action keeps an
-          // allow rule for "shell" from silently approving an escape. No save scope is
-          // offered: a sandbox escape is never persistently pre-approved from a prompt;
-          // the deliberate path for that is an opencode permission rule.
-          await context.permission.assert({
-            sessionID: event.sessionID,
-            action: "unsandboxed",
-            resources: [command],
-            metadata: { command },
-          })
-          void log("warn", `the user approved running a command unsandboxed: ${command}`)
+          // Commands matching unsandboxed_allow are pre-approved in the user's own
+          // config: no prompt. Everything else names the exact command and waits for
+          // the reply; a rejection or deny rule fails the call. The dedicated action
+          // keeps an allow rule for "shell" from silently approving an escape, and no
+          // save scope is offered, so a prompt never persists anything by itself.
+          const preapproved = policy.unsandboxedAllow.some((pattern) => matchesWildcard(command, pattern))
+          if (!preapproved) {
+            await context.permission.assert({
+              sessionID: event.sessionID,
+              action: "unsandboxed",
+              resources: [command],
+              metadata: { command },
+            })
+            void log("warn", `the user approved running a command unsandboxed: ${command}`)
+          } else {
+            void log("warn", `running a command unsandboxed without a prompt (unsandboxed_allow): ${command}`)
+          }
         }
         return
       }

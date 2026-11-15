@@ -63,6 +63,10 @@ on purpose: they can be set from a repository's own config.
   // exact command and runs it unsandboxed only after your approval; "allow"
   // runs it unsandboxed without asking. Per-project overrides only tighten it.
   "unsandboxed": "deny",
+  // Commands pre-approved to run unsandboxed without a prompt, with "*"
+  // wildcards. The persistent form of an approval, kept here in your config
+  // where it stays visible and reviewable. Applies in "ask" mode.
+  "unsandboxed_allow": ["git push *", "npm publish*"],
   // Also sandbox user "!" commands and plugin shells, protecting the user from
   // social engineering ("run this for me") and accidental damage. Default: false.
   "sandbox_user_commands": true,
@@ -96,8 +100,8 @@ The prompt uses its own permission action, `unsandboxed`, so an allow rule for
 patterns through opencode's own permission rules, which the prompt then honors
 instead of asking again. A deny rule for the action hides the tool entirely.
 The prompt offers no persistent "always allow": every escape is approved per
-call, and the only way to pre-approve one is an explicit permission rule in
-your own config, where it stays visible and reviewable.
+call. The persistent form of an approval is `unsandboxed_allow` in this
+plugin's own config, where it stays visible and reviewable.
 
 ```jsonc
 // opencode.jsonc

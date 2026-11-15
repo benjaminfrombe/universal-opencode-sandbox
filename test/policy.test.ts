@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { defaultPolicy, expandHome, resolvePolicy, toolBlocked } from "../src/policy"
+import { defaultPolicy, expandHome, matchesWildcard, resolvePolicy, toolBlocked } from "../src/policy"
 
 const home = os.tmpdir()
 
@@ -90,6 +90,23 @@ describe("resolvePolicy", () => {
       // Any layer choosing deny wins for good, and an unknown value changes nothing.
       expect(resolvePolicy("/project", { UNIVERSAL_SANDBOX_CONFIG: JSON.stringify({ unsandboxed: "deny" }) }, file).unsandboxed).toBe("deny")
       expect(resolvePolicy("/other", { UNIVERSAL_SANDBOX_CONFIG: JSON.stringify({ unsandboxed: "sometimes" }) }, file).unsandboxed).toBe("allow")
+    } finally {
+      fs.rmSync(file, { force: true })
+    }
+  })
+
+  test("unsandboxed_allow accumulates across layers and matches commands", async () => {
+    const global = { unsandboxed_allow: ["git push *"] }
+    const file = path.join(home, "universal-opencode-sandbox-test-unsandboxedallow.json")
+    fs.writeFileSync(file, JSON.stringify(global))
+    try {
+      const policy = resolvePolicy(
+        "/project",
+        { UNIVERSAL_SANDBOX_CONFIG: JSON.stringify({ unsandboxed_allow: ["npm publish*"] }) },
+        file,
+      )
+      expect(policy.unsandboxedAllow).toEqual(["git push *", "npm publish*"])
+      expect(matchesWildcard("git push origin main", policy.unsandboxedAllow[0])).toBe(true)
     } finally {
       fs.rmSync(file, { force: true })
     }

@@ -233,6 +233,38 @@ live("plugin hooks", () => {
     await denied.dispose?.()
   })
 
+  test("a command matching unsandboxed_allow skips the prompt", async () => {
+    const asks: unknown[] = []
+    const { hooks, dispose } = await start(
+      workspace,
+      JSON.stringify({ unsandboxed: "ask", unsandboxed_allow: ["git push *"] }),
+      {
+        assert: async (input: never) => {
+          asks.push(input)
+        },
+      },
+    )
+    // Pre-approved by the config: no assert, no prompt.
+    await hooks["execute.before"]({
+      tool: "shell_unsandboxed",
+      sessionID: "ses_1",
+      id: "call_p1",
+      input: { command: "git push origin main" },
+    })
+    expect(asks).toEqual([])
+    // Anything else still prompts.
+    await hooks["execute.before"]({
+      tool: "shell_unsandboxed",
+      sessionID: "ses_1",
+      id: "call_p2",
+      input: { command: "rm -rf /tmp/x" },
+    })
+    expect(asks).toEqual([
+      { sessionID: "ses_1", action: "unsandboxed", resources: ["rm -rf /tmp/x"], metadata: { command: "rm -rf /tmp/x" } },
+    ])
+    await dispose?.()
+  })
+
   test("sweeps in-flight request files on unload", async () => {
     const { hooks, dispose } = await start(workspace)
     const input: { command?: string } = { command: "echo sweep" }

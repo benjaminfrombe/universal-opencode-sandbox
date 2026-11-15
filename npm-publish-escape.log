@@ -1,42 +1,41 @@
-
+⠙[1G[0K
 > universal-opencode-sandbox@0.4.0 prepublishOnly
 > bun run build
 
-[0m[2m[35m$[0m [2m[1mbun build ./src/index.ts ./src/cli.ts --outdir dist --target node --format esm --external @microsoft/mxc-sdk --external @opencode/plugin && bun x tsc -p tsconfig.declarations.json[0m
-[32mBundled 5 modules in 3ms[0m
+⠙[1G[0K[0m[2m[35m$[0m [2m[1mbun build ./src/index.ts ./src/cli.ts --outdir dist --target node --format esm --external @microsoft/mxc-sdk --external @opencode/plugin && bun x tsc -p tsconfig.declarations.json[0m
+[32mBundled 5 modules in 4ms[0m
 
-  [34mindex.js[0m  17.62 KB  [2m(entry point)[0m
-  [34mcli.js[0m    11.36 KB  [2m(entry point)[0m
+  [34mindex.js[0m  19.43 KB  [2m(entry point)[0m
+  [34mcli.js[0m    11.89 KB  [2m(entry point)[0m
 
-⠙[1G[0K[1mnpm[22m [96mnotice[39m
-⠙[1G[0K[1mnpm[22m [96mnotice[39m 📦  universal-opencode-sandbox@0.4.0
-⠙[1G[0K[1mnpm[22m [96mnotice[39m [94mTarball Contents[39m
-⠙[1G[0K[1mnpm[22m [96mnotice[39m 1.1kB LICENSE
-[1mnpm[22m [96mnotice[39m 13.3kB README.md
+⠙[1G[0K⠹[1G[0K[1mnpm[22m [96mnotice[39m
+⠹[1G[0K[1mnpm[22m [96mnotice[39m 📦  universal-opencode-sandbox@0.4.0
+⠹[1G[0K[1mnpm[22m [96mnotice[39m [94mTarball Contents[39m
+⠹[1G[0K[1mnpm[22m [96mnotice[39m 1.1kB LICENSE
+[1mnpm[22m [96mnotice[39m 14.3kB README.md
 [1mnpm[22m [96mnotice[39m 31B dist/cli.d.ts
-[1mnpm[22m [96mnotice[39m 11.4kB dist/cli.js
+[1mnpm[22m [96mnotice[39m 11.9kB dist/cli.js
 [1mnpm[22m [96mnotice[39m 107B dist/index.d.ts
-[1mnpm[22m [96mnotice[39m 17.6kB dist/index.js
-[1mnpm[22m [96mnotice[39m 2.6kB dist/policy.d.ts
+[1mnpm[22m [96mnotice[39m 19.4kB dist/index.js
+[1mnpm[22m [96mnotice[39m 3.1kB dist/policy.d.ts
 [1mnpm[22m [96mnotice[39m 1.0kB dist/unsandboxed.d.ts
 [1mnpm[22m [96mnotice[39m 2.2kB dist/wire.d.ts
 [1mnpm[22m [96mnotice[39m 1.6kB package.json
-⠙[1G[0K[1mnpm[22m [96mnotice[39m [94mTarball Details[39m
-⠙[1G[0K[1mnpm[22m [96mnotice[39m name: universal-opencode-sandbox
-⠙[1G[0K[1mnpm[22m [96mnotice[39m version: 0.4.0
-⠙[1G[0K[1mnpm[22m [96mnotice[39m filename: universal-opencode-sandbox-0.4.0.tgz
-⠙[1G[0K[1mnpm[22m [96mnotice[39m package size: 14.1 kB
-⠙[1G[0K[1mnpm[22m [96mnotice[39m unpacked size: 50.9 kB
-⠙[1G[0K[1mnpm[22m [96mnotice[39m shasum: 1130cc06ec9c50744f98c69d0949fea8f6db5b71
-⠙[1G[0K[1mnpm[22m [96mnotice[39m integrity: sha512-bH38oeHaQdgIR[...]vNETNXESFr70Q==
-⠙[1G[0K[1mnpm[22m [96mnotice[39m total files: 10
-⠙[1G[0K[1mnpm[22m [96mnotice[39m
-⠙[1G[0K⠹[1G[0K⠸[1G[0K[1mnpm[22m [96mnotice[39m Publishing to https://registry.npmjs.org/ with tag latest and default access
-⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0KAuthenticate your account at:
-https://www.npmjs.com/auth/cli/64bfff6e-0304-49f7-a761-aeb3b701b088
-⠏[1G[0K[1G[0JPress ENTER to open in the browser...[38G
+⠹[1G[0K[1mnpm[22m [96mnotice[39m [94mTarball Details[39m
+⠹[1G[0K[1mnpm[22m [96mnotice[39m name: universal-opencode-sandbox
+⠹[1G[0K[1mnpm[22m [96mnotice[39m version: 0.4.0
+⠹[1G[0K[1mnpm[22m [96mnotice[39m filename: universal-opencode-sandbox-0.4.0.tgz
+⠹[1G[0K[1mnpm[22m [96mnotice[39m package size: 15.0 kB
+⠹[1G[0K[1mnpm[22m [96mnotice[39m unpacked size: 54.8 kB
+⠹[1G[0K[1mnpm[22m [96mnotice[39m shasum: 3af1c99a6e5bdd13c017fc25298c5ec84baf5167
+⠹[1G[0K[1mnpm[22m [96mnotice[39m integrity: sha512-3TJ8i9UJSUr3J[...]rxLhPfuurn1tQ==
+⠹[1G[0K[1mnpm[22m [96mnotice[39m total files: 10
+⠹[1G[0K[1mnpm[22m [96mnotice[39m
+⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K[1mnpm[22m [96mnotice[39m Publishing to https://registry.npmjs.org/ with tag latest and default access
+⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0KAuthenticate your account at:
+https://www.npmjs.com/auth/cli/7f6b550d-35f7-4587-bff2-540142c7af57
+⠋[1G[0K[1G[0JPress ENTER to open in the browser...[38G
 
-⠙[1G[0K[1mnpm[22m [31merror[39m [94mcode[39m E404
-⠙[1G[0K[1mnpm[22m [31merror[39m [94m404[39m Not Found - GET https://registry.npmjs.org/-/v1/done?authId=***
-⠙[1G[0K[1mnpm[22m [31merror[39m A complete log of this run can be found in: /Users/jacobsben/.npm/_logs/2026-11-15T18_23_47_147Z-debug-0.log
-⠙[1G[0K
+⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K[1mnpm[22m [96mnotice[39m Your package is being processed and may take a few minutes to become available.
+⠋[1G[0K+ universal-opencode-sandbox@0.4.0
+⠋[1G[0K

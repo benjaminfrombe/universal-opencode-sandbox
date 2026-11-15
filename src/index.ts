@@ -27,7 +27,13 @@ const BLOCKED = "universal-opencode-sandbox unavailable; command blocked"
 export default Plugin.define({
   id: "universal-opencode-sandbox",
   setup: async (context) => {
-    const policy = resolvePolicy(context.location.directory)
+    // The policy is re-resolved on every hook invocation, so config edits take
+    // effect on the next tool call without a restart - including the "enabled"
+    // kill switch, which turns every hook into a no-op while it stays false.
+    let policy = resolvePolicy(context.location.directory)
+    const refreshPolicy = () => {
+      policy = resolvePolicy(context.location.directory)
+    }
     if (!policy.enabled) return
 
     const log = (level: "warn" | "error", message: string) =>
@@ -82,6 +88,9 @@ export default Plugin.define({
     const askGuard =
       policy.unsandboxed === "ask"
         ? await context.permission.hook("evaluate", async (event) => {
+            refreshPolicy()
+            // With the kill switch off, the guard stands down: no forced prompts.
+            if (!policy.enabled) return
             if (event.action !== "unsandboxed") return
             // The prompt must name the command: it is the only thing the user approves,
             // and hosts render the message but not necessarily the resources.
@@ -108,6 +117,10 @@ export default Plugin.define({
         : undefined
 
     const before = await context.tool.hook("execute.before", async (event) => {
+      refreshPolicy()
+      // The kill switch: with enabled false every hook stands down, so nothing is
+      // sandboxed, blocked or prompted until the config turns it back on.
+      if (!policy.enabled) return
       // Tool blocks hold in every mode: they are an explicit policy choice, like denied
       // paths, not a fallback for a sandbox that cannot run. This closes escape routes
       // outside the sandbox, such as a host app's unsandboxed terminal tools, and unlike
@@ -197,6 +210,8 @@ export default Plugin.define({
     // agent tool calls, so already-wrapped commands are detected and skipped.
     const shellBefore = policy.userCommands
       ? await context.shell.hook("create.before", async (invocation) => {
+          refreshPolicy()
+          if (!policy.enabled) return
           if (invocation.command.startsWith(`${quote(executor)} `)) return
           if (unavailable || gap) {
             if (enforce) throw new Error(`${BLOCKED}: ${reason}`)

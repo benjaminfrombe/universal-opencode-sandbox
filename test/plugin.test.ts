@@ -19,7 +19,20 @@ const start = async (
     sessionPermissions?: { action: string; resource: string; effect: string }[]
   },
 ) => {
+  // Hermetic: point XDG_CONFIG_HOME at a temp dir so the developer's real global
+  // sandbox config (sandbox_user_commands, blocked tools, ...) cannot leak in, and
+  // restore both env vars only at dispose time - the hooks re-read the policy on
+  // every call, so the injected config must stay live until the test is done.
+  const previousConfig = process.env.UNIVERSAL_SANDBOX_CONFIG
+  const previousXdg = process.env.XDG_CONFIG_HOME
   if (injected) process.env.UNIVERSAL_SANDBOX_CONFIG = injected
+  process.env.XDG_CONFIG_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "sandbox-test-"))
+  const restoreEnv = () => {
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
+    else process.env.XDG_CONFIG_HOME = previousXdg
+    if (previousConfig === undefined) delete process.env.UNIVERSAL_SANDBOX_CONFIG
+    else process.env.UNIVERSAL_SANDBOX_CONFIG = previousConfig
+  }
   try {
     const hooks: Record<string, Hook> = {}
     const tools: { name: string; execute: (input: unknown, context: { sessionID: string }) => Promise<unknown> }[] = []
@@ -57,9 +70,18 @@ const start = async (
         }),
       },
     } as never)
-    return { hooks, tools, dispose }
-  } finally {
-    if (injected) delete process.env.UNIVERSAL_SANDBOX_CONFIG
+    return {
+      hooks,
+      tools,
+      dispose: async () => {
+        // With enabled false the setup returns early and hands back no cleanup.
+        if (typeof dispose === "function") await dispose()
+        restoreEnv()
+      },
+    }
+  } catch (error) {
+    restoreEnv()
+    throw error
   }
 }
 
@@ -135,6 +157,33 @@ live("plugin hooks", () => {
 
     const disabled = await start(workspace, JSON.stringify({ enabled: false }))
     expect(Object.keys(disabled.hooks)).toEqual([])
+    await disabled.dispose()
+  })
+
+  test("flipping enabled at runtime stands the hooks down and back up without a restart", async () => {
+    const { hooks, dispose } = await start(workspace)
+    const wrapped: { command?: string } = { command: "echo hot" }
+    await hooks["execute.before"]({ tool: "shell", sessionID: "ses_1", id: "call_h1", input: wrapped })
+    expect(wrapped.command).not.toBe("echo hot")
+
+    // Kill switch on: the same call passes through untouched.
+    const previous = process.env.UNIVERSAL_SANDBOX_CONFIG
+    process.env.UNIVERSAL_SANDBOX_CONFIG = JSON.stringify({ enabled: false })
+    try {
+      const passthrough: { command?: string } = { command: "echo hot" }
+      await hooks["execute.before"]({ tool: "shell", sessionID: "ses_1", id: "call_h2", input: passthrough })
+      expect(passthrough.command).toBe("echo hot")
+
+      // Kill switch off: the hooks re-arm on the next call.
+      delete process.env.UNIVERSAL_SANDBOX_CONFIG
+      const rearmed: { command?: string } = { command: "echo hot" }
+      await hooks["execute.before"]({ tool: "shell", sessionID: "ses_1", id: "call_h3", input: rearmed })
+      expect(rearmed.command).not.toBe("echo hot")
+    } finally {
+      if (previous === undefined) delete process.env.UNIVERSAL_SANDBOX_CONFIG
+      else process.env.UNIVERSAL_SANDBOX_CONFIG = previous
+    }
+    await dispose?.()
   })
 
   test("deny mode (the default) registers no escape tool, so an agent cannot even ask", async () => {

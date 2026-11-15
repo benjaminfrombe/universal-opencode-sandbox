@@ -45,6 +45,14 @@ on purpose: they can be set from a repository's own config.
   "enabled": true,
   // "enforce" (default) blocks a command when the sandbox cannot run it;
   // "permissive" runs it unsandboxed with a warning.
+  // Master switch: "enabled": false turns every hook into a no-op - nothing is
+  // sandboxed, blocked or prompted - until you set it back to true. The policy
+  // is re-read on every tool call, so flipping it takes effect immediately,
+  // without a restart. (At plugin load with enabled false nothing is registered
+  // at all; set it back to true and restart the session to re-arm.)
+  "enabled": true,
+  // "enforce" blocks a command when the sandbox cannot run it; "permissive"
+  // runs it unsandboxed with a warning instead.
   "mode": "enforce",
   "filesystem": {
     // "workspace-write" (default) allows writes to the workspace, the temp

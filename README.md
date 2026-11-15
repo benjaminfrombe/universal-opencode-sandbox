@@ -100,7 +100,9 @@ The prompt uses its own permission action, `unsandboxed`, so an allow rule for
 patterns through opencode's own permission rules, which the prompt then honors
 instead of asking again. A deny rule for the action hides the tool entirely.
 The prompt offers no persistent "always allow": every escape is approved per
-call. The persistent form of an approval is `unsandboxed_allow` in this
+call, and where a host still renders an "always allow" button it behaves
+identically to "allow once" - the request carries no save scope, so nothing is
+ever stored. The persistent form of an approval is `unsandboxed_allow` in this
 plugin's own config, where it stays visible and reviewable.
 
 ```jsonc

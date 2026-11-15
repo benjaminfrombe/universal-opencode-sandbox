@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { defaultPolicy, expandHome, resolvePolicy } from "../src/policy"
+import { defaultPolicy, expandHome, resolvePolicy, toolBlocked } from "../src/policy"
 
 const home = os.tmpdir()
 
@@ -51,6 +51,41 @@ describe("resolvePolicy", () => {
     } finally {
       fs.rmSync(file, { force: true })
     }
+  })
+
+  test("blocked tools accumulate across layers and a layer can never unblock", () => {
+    const global = { blocked_tools: ["paseo_create_terminal"] }
+    const file = path.join(home, "universal-opencode-sandbox-test-blocked.json")
+    fs.writeFileSync(file, JSON.stringify(global))
+    try {
+      const policy = resolvePolicy(
+        "/project",
+        { UNIVERSAL_SANDBOX_CONFIG: JSON.stringify({ blocked_tools: ["paseo_send_terminal_keys"] }) },
+        file,
+      )
+      expect(policy.blockedTools).toEqual(["paseo_create_terminal", "paseo_send_terminal_keys"])
+    } finally {
+      fs.rmSync(file, { force: true })
+    }
+  })
+})
+
+describe("toolBlocked", () => {
+  const patterns = ["paseo_create_terminal", "paseo_send_*", "exact"]
+
+  test("matches exact names and wildcards, and nothing else", () => {
+    expect(toolBlocked("paseo_create_terminal", patterns)).toBe(true)
+    expect(toolBlocked("paseo_send_terminal_keys", patterns)).toBe(true)
+    expect(toolBlocked("exact", patterns)).toBe(true)
+    expect(toolBlocked("paseo_capture_terminal", patterns)).toBe(false)
+    expect(toolBlocked("paseo_sendterminal", patterns)).toBe(false)
+    expect(toolBlocked("shell", [])).toBe(false)
+  })
+
+  test("treats pattern characters in a tool name literally", () => {
+    expect(toolBlocked("a.b", ["a*b"])).toBe(true)
+    expect(toolBlocked("a.b", ["a.b"])).toBe(true)
+    expect(toolBlocked("axb", ["a.b"])).toBe(false)
   })
 })
 

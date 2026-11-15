@@ -22,6 +22,8 @@ export interface Policy {
   readonly unsandboxed: "deny" | "allow"
   /** Also sandbox user "!" commands and plugin shells, not just agent shell tool calls. */
   readonly userCommands: boolean
+  /** Tool names the agent may not call at all, with "*" as a wildcard ("paseo_*"). */
+  readonly blockedTools: string[]
 }
 
 interface RawConfig {
@@ -32,6 +34,8 @@ interface RawConfig {
   unsandboxed?: unknown
   /** Also sandbox user "!" commands and plugin shells, not just agent shell tool calls. */
   sandbox_user_commands?: unknown
+  /** Tool names the agent may not call at all, with "*" as a wildcard ("paseo_*"). */
+  blocked_tools?: unknown
   projects?: Record<string, RawConfig>
 }
 
@@ -44,6 +48,7 @@ interface Merged {
   network?: "deny" | "allow"
   unsandboxed?: "deny" | "allow"
   userCommands?: boolean
+  blockedTools: string[]
   writableRoots: string[]
   deniedPaths: string[]
 }
@@ -64,6 +69,7 @@ export const defaultPolicy: Policy = {
   network: "deny",
   unsandboxed: "deny",
   userCommands: false,
+  blockedTools: [],
 }
 
 /**
@@ -76,7 +82,7 @@ export function resolvePolicy(
   environment: NodeJS.ProcessEnv = process.env,
   globalFile: string = configPath(),
 ): Policy {
-  let merged: Merged = { writableRoots: [], deniedPaths: [] }
+  let merged: Merged = { writableRoots: [], deniedPaths: [], blockedTools: [] }
   const global = readConfig(globalFile)
   if (global) merged = tighten(merged, global)
   const project = global?.projects?.[workspace]
@@ -100,6 +106,7 @@ export function resolvePolicy(
     network: merged.network ?? "deny",
     unsandboxed: merged.unsandboxed ?? "deny",
     userCommands: merged.userCommands ?? false,
+    blockedTools: [...new Set(merged.blockedTools)],
   }
 }
 
@@ -120,6 +127,9 @@ function tighten(merged: Merged, raw: RawConfig): Merged {
   if (Array.isArray(raw.filesystem?.denied_paths)) {
     for (const item of raw.filesystem.denied_paths) if (typeof item === "string") merged.deniedPaths.push(item)
   }
+  if (Array.isArray(raw.blocked_tools)) {
+    for (const item of raw.blocked_tools) if (typeof item === "string") merged.blockedTools.push(item)
+  }
   return {
     // Any layer can turn the sandbox off; all layers here are user-owned, so false wins.
     enabled: raw.enabled === undefined ? merged.enabled : raw.enabled === false ? false : merged.enabled === false ? false : true,
@@ -128,6 +138,7 @@ function tighten(merged: Merged, raw: RawConfig): Merged {
     network: strictest(merged.network, raw.network, "deny", "allow"),
     unsandboxed: strictest(merged.unsandboxed, raw.unsandboxed, "deny", "allow"),
     userCommands: raw.sandbox_user_commands === true || merged.userCommands === true,
+    blockedTools: merged.blockedTools,
     writableRoots: merged.writableRoots,
     deniedPaths: merged.deniedPaths,
   }
@@ -144,4 +155,12 @@ function strictest<T extends string>(current: T | undefined, incoming: unknown, 
 // Expands a leading "~" against the home directory, like a shell would.
 export function expandHome(item: string, home = os.homedir()) {
   return item === "~" ? home : item.startsWith("~/") ? path.join(home, item.slice(2)) : item
+}
+
+/** True when the tool name matches a blocked pattern; "*" in a pattern matches any sequence. */
+export function toolBlocked(tool: string, patterns: readonly string[]): boolean {
+  return patterns.some((pattern) => {
+    const source = pattern.split("*").map((part) => part.replace(/[|\\{}()[\]^$+?.]/g, "\\$&")).join(".*")
+    return new RegExp(`^${source}$`).test(tool)
+  })
 }

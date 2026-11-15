@@ -60,6 +60,11 @@ on purpose: they can be set from a repository's own config.
   // Also sandbox user "!" commands and plugin shells, protecting the user from
   // social engineering ("run this for me") and accidental damage. Default: false.
   "sandbox_user_commands": true,
+  // Tool names the agent may not call at all; "*" is a wildcard. Use this to close
+  // escape routes outside the sandbox, such as a host app's unsandboxed terminal
+  // tools (an agent can otherwise spawn or drive a raw shell there). Unlike
+  // opencode's own permission rules, a repository config cannot re-allow these.
+  "blocked_tools": ["paseo_create_terminal", "paseo_send_terminal_keys"],
   // Per-project overrides, keyed by the workspace's absolute path. Every field is
   // optional and can only make the policy stricter, never looser.
   "projects": {
@@ -117,8 +122,10 @@ disable the admin terminal for regular users. The plugin confines opencode agent
 terminals spawned by a host app (for example Paseo) are confined by having the host
 start them through `sandboxed-shell` instead of a plain shell. Whoever controls
 terminal creation controls the choice: point every terminal at the wrapper and nobody
-gets an unsandboxed one. Inside opencode itself, `sandbox_user_commands: true` already
-forces user `!` commands and plugin shells through the same sandbox.
+gets an unsandboxed one. Inside opencode itself, two layers close the agent's route
+to a host app's terminals: `blocked_tools` denies the terminal tools at every tool
+call (a repository config cannot re-allow it), and opencode's own `permission` rules
+hide them from the agent's tool catalog entirely.
 
 ## Known limitations
 

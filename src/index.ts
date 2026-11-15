@@ -10,7 +10,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { Plugin } from "@opencode/plugin"
-import { resolvePolicy } from "./policy.js"
+import { resolvePolicy, toolBlocked } from "./policy.js"
 import { quote, resolveExecutor, unsupportedNetwork, wireRequest } from "./wire.js"
 
 interface ShellInput {
@@ -62,6 +62,14 @@ export default Plugin.define({
     }
 
     const before = await context.tool.hook("execute.before", async (event) => {
+      // Tool blocks hold in every mode: they are an explicit policy choice, like denied
+      // paths, not a fallback for a sandbox that cannot run. This closes escape routes
+      // outside the sandbox, such as a host app's unsandboxed terminal tools, and unlike
+      // opencode's own permission rules it cannot be re-allowed by a repository config.
+      if (toolBlocked(event.tool, policy.blockedTools)) {
+        void log("warn", `tool call to ${event.tool} blocked by the sandbox config (blocked_tools)`)
+        throw new Error(`universal-opencode-sandbox: the tool ${event.tool} is blocked by the sandbox config`)
+      }
       if (event.tool !== "shell") return
       const input = (event.input ?? {}) as ShellInput
       const command = input.command

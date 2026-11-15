@@ -51,11 +51,10 @@ on purpose: they can be set from a repository's own config.
     // directory, and writable_roots; "read-only" denies every write.
     "mode": "workspace-write",
     "writable_roots": [],
-    // Paths the sandboxed command can neither read nor write. Unset (default):
-    // the standard credential list below. Setting the list REPLACES it: this
-    // example would drop every default except these two, so copy the standard
-    // list below and extend it rather than writing a short one from scratch.
-    "denied_paths": ["~/.ssh", "~/.aws"]
+    // Leave denied_paths unset to get the standard credential list below.
+    // Setting it replaces that list wholesale, so to add a path of your own,
+    // copy the standard list and extend it, for example:
+    // "denied_paths": ["~/.ssh", "~/.aws", "... the standard list below ...", "~/.config/my-cli"]
   },
   // "deny" (default) blocks all network access for sandboxed commands.
   "network": "deny",

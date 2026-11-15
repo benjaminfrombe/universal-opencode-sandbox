@@ -5,6 +5,9 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "sandboxed-shell": "dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -17,7 +20,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir dist --target node --format esm --external @microsoft/mxc-sdk --external @opencode/plugin && bun x tsc -p tsconfig.declarations.json",
+    "build": "bun build ./src/index.ts ./src/cli.ts --outdir dist --target node --format esm --external @microsoft/mxc-sdk --external @opencode/plugin && bun x tsc -p tsconfig.declarations.json",
     "dev": "bun run --watch src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",

@@ -36,6 +36,8 @@ export interface WireInput {
   readonly timeout: number
   readonly policy: Policy
   readonly tmpRoots?: string[]
+  /** Extra KEY=VALUE environment entries layered over the backend default (used by the sandboxed-shell CLI). */
+  readonly environment?: string[]
 }
 
 /** Maps a policy and one command onto the wire request, platform-aware. */
@@ -94,6 +96,7 @@ export function wireRequest(input: WireInput, platform: NodeJS.Platform = proces
       timeout: input.timeout,
       cwd,
       inheritDefaultEnv: true,
+      ...(input.environment === undefined ? {} : { env: input.environment }),
     },
     filesystem,
     ...(input.policy.network === "deny"

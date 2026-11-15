@@ -89,6 +89,37 @@ on purpose: they can be set from a repository's own config.
   Linux), or a missing executor blocks the command in `enforce` mode instead of
   running it unconfined. `mode: "permissive"` trades that guarantee for convenience.
 
+## Sandboxed terminal
+
+The package also ships `sandboxed-shell`, a small CLI that starts an **interactive
+shell inside the same sandbox**: the same filesystem and network policy as the agent
+commands, applied to everything you (or anything else) type into it.
+
+```bash
+# Safe terminal: interactive zsh under Seatbelt/bubblewrap/ProcessContainer
+sandboxed-shell --workspace /path/to/project
+```
+
+This gives you two terminal types next to each other:
+
+| Terminal type | How | What runs inside |
+|---|---|---|
+| Safe terminal | `sandboxed-shell` (or `exec` it in an existing terminal) | The MXC sandbox policy from your config |
+| Admin terminal | your normal shell | Unconfined, for server restarts and admin work |
+
+The safe terminal fails closed: if the sandbox cannot run, no shell is started, and
+exiting it ends the session with no unsandboxed fallback. It inherits your
+environment (PATH, TERM, HOME) so it behaves like a normal terminal; secrets in the
+environment stay put because egress is denied and the filesystem policy still applies.
+
+**Locking it down for other users**: the two-type design is exactly what lets you
+disable the admin terminal for regular users. The plugin confines opencode agents;
+terminals spawned by a host app (for example Paseo) are confined by having the host
+start them through `sandboxed-shell` instead of a plain shell. Whoever controls
+terminal creation controls the choice: point every terminal at the wrapper and nobody
+gets an unsandboxed one. Inside opencode itself, `sandbox_user_commands: true` already
+forces user `!` commands and plugin shells through the same sandbox.
+
 ## Known limitations
 
 - With the sandbox enabled, OpenCode's per-command shell permission rules see the
@@ -109,7 +140,10 @@ and Windows 11 (ProcessContainer): output and exit codes stream through, writes 
 the workspace succeed, writes outside are denied, protected config files cannot be
 planted, and network egress is blocked (except the documented Windows gap). Also
 verified end to end inside a real OpenCode 2.2.7 session: an agent's shell command
-writes inside the workspace and is denied outside it.
+writes inside the workspace and is denied outside it. The `sandboxed-shell` terminal
+was verified interactively on macOS: commands run with full environment, writes inside
+the workspace succeed, writes outside are denied, network egress is blocked, and
+`denied_paths` (for example `~/.ssh`) cannot be read.
 
 ## License
 

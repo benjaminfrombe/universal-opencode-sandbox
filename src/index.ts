@@ -85,7 +85,7 @@ export default Plugin.define({
             if (event.action !== "unsandboxed") return
             // The prompt must name the command: it is the only thing the user approves,
             // and hosts render the message but not necessarily the resources.
-            event.message = `Run this command outside the sandbox:\n${event.resources.join(" ")}`
+            event.message = `Run this command outside the sandbox:\n\n${event.resources.join(" ")}`
             if (event.effect !== "allow") return
             const force = () => {
               event.effect = "ask"

@@ -204,7 +204,7 @@ live("plugin hooks", () => {
     await hooks["permission:evaluate"](event)
     expect(event.effect).toBe("ask")
     // The prompt names the command: it is the only thing the user approves.
-    expect(event.message).toBe("Run this command outside the sandbox:\necho x")
+    expect(event.message).toBe("Run this command outside the sandbox:\n\necho x")
     await dispose?.()
   })
 

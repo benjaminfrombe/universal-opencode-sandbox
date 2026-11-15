@@ -20,6 +20,8 @@ export interface Policy {
   readonly network: "deny" | "allow"
   /** What happens when a tool call asks to skip the sandbox (shell input "sandbox: false"). */
   readonly unsandboxed: "deny" | "allow"
+  /** Also sandbox user "!" commands and plugin shells, not just agent shell tool calls. */
+  readonly userCommands: boolean
 }
 
 interface RawConfig {
@@ -28,6 +30,8 @@ interface RawConfig {
   filesystem?: { mode?: unknown; writable_roots?: unknown; denied_paths?: unknown }
   network?: unknown
   unsandboxed?: unknown
+  /** Also sandbox user "!" commands and plugin shells, not just agent shell tool calls. */
+  sandbox_user_commands?: unknown
   projects?: Record<string, RawConfig>
 }
 
@@ -39,12 +43,17 @@ interface Merged {
   filesystemMode?: "read-only" | "workspace-write"
   network?: "deny" | "allow"
   unsandboxed?: "deny" | "allow"
+  userCommands?: boolean
   writableRoots: string[]
   deniedPaths: string[]
 }
 
+// The real home directory from the system password database, not the HOME env var:
+// Paseo and some sandboxes set HOME to the workspace, which would break config lookup.
+const realHome = () => os.userInfo().homedir
+
 const configDirectory = () =>
-  path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config"), "universal-opencode-sandbox")
+  path.join(process.env.XDG_CONFIG_HOME ?? path.join(realHome(), ".config"), "universal-opencode-sandbox")
 
 const configPath = () => path.join(configDirectory(), "config.json")
 
@@ -54,6 +63,7 @@ export const defaultPolicy: Policy = {
   filesystem: { mode: "read-only", writableRoots: [], deniedPaths: [] },
   network: "deny",
   unsandboxed: "deny",
+  userCommands: false,
 }
 
 /**
@@ -89,6 +99,7 @@ export function resolvePolicy(
     },
     network: merged.network ?? "deny",
     unsandboxed: merged.unsandboxed ?? "deny",
+    userCommands: merged.userCommands ?? false,
   }
 }
 
@@ -116,6 +127,7 @@ function tighten(merged: Merged, raw: RawConfig): Merged {
     filesystemMode: strictest(merged.filesystemMode, raw.filesystem?.mode, "read-only", "workspace-write"),
     network: strictest(merged.network, raw.network, "deny", "allow"),
     unsandboxed: strictest(merged.unsandboxed, raw.unsandboxed, "deny", "allow"),
+    userCommands: raw.sandbox_user_commands === true || merged.userCommands === true,
     writableRoots: merged.writableRoots,
     deniedPaths: merged.deniedPaths,
   }

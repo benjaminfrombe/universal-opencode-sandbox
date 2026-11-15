@@ -101,6 +101,35 @@ export default Plugin.define({
       }
     })
 
+    // When enabled, also sandbox user "!" commands and plugin shells. This hook fires at
+    // Shell.Service level for every command, after tool.execute.before has already wrapped
+    // agent tool calls, so already-wrapped commands are detected and skipped.
+    const shellBefore = policy.userCommands
+      ? await context.shell.hook("create.before", async (invocation) => {
+          if (invocation.command.startsWith(`${quote(executor)} `)) return
+          if (unavailable || gap) {
+            if (enforce) throw new Error(`${BLOCKED}: ${reason}`)
+            return
+          }
+          try {
+            const request = wireRequest({
+              command: invocation.command,
+              workspace: context.location.directory,
+              cwd: invocation.cwd,
+              timeout: invocation.timeout || 0,
+              policy,
+            })
+            const id = `shell_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+            const file = path.join(requestDirectory, `${id}.json`)
+            fs.writeFileSync(file, JSON.stringify(request), { mode: 0o600 })
+            invocation.command = `${quote(executor)} ${quote(file)}`
+          } catch (error) {
+            if (enforce) throw new Error(`${BLOCKED}: ${error instanceof Error ? error.message : String(error)}`)
+            void log("warn", `failed to wrap a shell command; running unsandboxed: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        })
+      : undefined
+
     const after = await context.tool.hook("execute.after", async (event) => {
       const pending = inFlight.get(event.id)
       if (pending === undefined) return
@@ -112,6 +141,7 @@ export default Plugin.define({
     return async () => {
       await before.dispose()
       await after.dispose()
+      if (shellBefore) await shellBefore.dispose()
       for (const callID of [...inFlight.keys()]) cleanup(callID)
     }
   },

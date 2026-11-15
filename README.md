@@ -57,6 +57,9 @@ on purpose: they can be set from a repository's own config.
   // What happens when a tool call asks to skip the sandbox (shell input
   // "sandbox: false"): "deny" (default) blocks it, "allow" runs it unsandboxed.
   "unsandboxed": "deny",
+  // Also sandbox user "!" commands and plugin shells, protecting the user from
+  // social engineering ("run this for me") and accidental damage. Default: false.
+  "sandbox_user_commands": true,
   // Per-project overrides, keyed by the workspace's absolute path. Every field is
   // optional and can only make the policy stricter, never looser.
   "projects": {

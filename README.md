@@ -210,7 +210,13 @@ to the model at all); together a repository config cannot talk its way around th
   commands, prefer this plugin's `denied_paths` and filesystem policy.
 - Intel macOS is unsupported: the MXC npm package ships no darwin-x64 runtime yet.
 - MXC release builds on Windows emit required Microsoft diagnostic telemetry; see the
-  [MXC documentation](https://github.com/microsoft/mxc).
+  [MXC documentation](https://github.com/microsoft/mxc). Per MXC's field inventory
+  the events carry only operational metadata: the MXC version, the requested
+  sandbox kind and selected backend, run outcome, exit code, duration, a bounded
+  failure category, and random correlation identifiers. They explicitly do not
+  contain command lines, environment values, file paths, tokens, credentials,
+  sandbox output, or free-form error text. Telemetry is a no-op on macOS and
+  Linux: nothing leaves the host there.
 - MXC's process streams do not deliver under Bun (microsoft/mxc#1782). This plugin is
   unaffected: the executor is a native binary whose output the shell tool captures.
 

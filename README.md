@@ -59,7 +59,9 @@ on purpose: they can be set from a repository's own config.
   // "deny" (default) blocks all network access for sandboxed commands.
   "network": "deny",
   // What happens when a tool call asks to skip the sandbox (shell input
-  // "sandbox: false"): "deny" (default) blocks it, "allow" runs it unsandboxed.
+  // "sandbox: false"): "deny" (default) blocks it; "ask" prompts you with the
+  // exact command and runs it unsandboxed only after your approval; "allow"
+  // runs it unsandboxed without asking. Per-project overrides only tighten it.
   "unsandboxed": "deny",
   // Also sandbox user "!" commands and plugin shells, protecting the user from
   // social engineering ("run this for me") and accidental damage. Default: false.
@@ -79,6 +81,24 @@ on purpose: they can be set from a repository's own config.
 ```
 
 `UNIVERSAL_SANDBOX_CONFIG` (a JSON string) tightens the same fields per invocation.
+
+### Escaping the sandbox with approval
+
+`unsandboxed: "ask"` turns a `sandbox: false` request into an approval prompt:
+the agent names the command, you approve or deny it, and only an approval runs
+it outside the sandbox. The prompt uses its own permission action,
+`unsandboxed`, so an allow rule for `shell` never silently covers an escape -
+and you can pre-approve command patterns through opencode's own permission
+rules, which the prompt then honors instead of asking again:
+
+```jsonc
+// opencode.jsonc - example: never ask again for these unsandboxed commands
+{
+  "permissions": [
+    { "action": "unsandboxed", "resource": "git push:*", "effect": "allow" }
+  ]
+}
+```
 
 ### Default denied paths
 

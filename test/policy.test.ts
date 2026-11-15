@@ -80,6 +80,21 @@ describe("resolvePolicy", () => {
     }
   })
 
+  test("unsandboxed modes merge strictest across layers: deny beats ask beats allow", () => {
+    const global = { unsandboxed: "allow", projects: { "/project": { unsandboxed: "ask" } } }
+    const file = path.join(home, "universal-opencode-sandbox-test-unsandboxed.json")
+    fs.writeFileSync(file, JSON.stringify(global))
+    try {
+      expect(resolvePolicy("/project", {}, file).unsandboxed).toBe("ask")
+      expect(resolvePolicy("/other", {}, file).unsandboxed).toBe("allow")
+      // Any layer choosing deny wins for good, and an unknown value changes nothing.
+      expect(resolvePolicy("/project", { UNIVERSAL_SANDBOX_CONFIG: JSON.stringify({ unsandboxed: "deny" }) }, file).unsandboxed).toBe("deny")
+      expect(resolvePolicy("/other", { UNIVERSAL_SANDBOX_CONFIG: JSON.stringify({ unsandboxed: "sometimes" }) }, file).unsandboxed).toBe("allow")
+    } finally {
+      fs.rmSync(file, { force: true })
+    }
+  })
+
   test("blocked tools accumulate across layers and a layer can never unblock", () => {
     const global = { blocked_tools: ["paseo_create_terminal"] }
     const file = path.join(home, "universal-opencode-sandbox-test-blocked.json")

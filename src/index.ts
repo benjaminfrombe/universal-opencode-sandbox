@@ -76,11 +76,25 @@ export default Plugin.define({
       if (typeof command !== "string" || command === "" || inFlight.has(event.id)) return
 
       if (input.sandbox === false) {
-        // A tool call asking to skip the sandbox never widens the policy: deny, or run
-        // unsandboxed only when the user explicitly allowed it in the sandbox config.
+        // A tool call asking to skip the sandbox never widens the policy: deny, ask the
+        // user for this exact command, or run unsandboxed only when explicitly allowed.
         if (policy.unsandboxed === "deny") {
-          void log("warn", `tool call asked to skip the sandbox; blocked (set unsandboxed "allow" to permit this)`)
+          void log("warn", `tool call asked to skip the sandbox; blocked (set unsandboxed "ask" or "allow" to permit this)`)
           throw new Error("universal-opencode-sandbox: running this command unsandboxed is not allowed")
+        }
+        if (policy.unsandboxed === "ask") {
+          // Prompts the user with the exact command and waits for the reply; resolves when
+          // allowed, rejects on a deny rule or a rejection. The dedicated action keeps an
+          // allow rule for "shell" from silently approving an escape, and lets the user
+          // pre-approve command patterns through opencode's own permission rules.
+          await context.permission.assert({
+            sessionID: event.sessionID,
+            action: "unsandboxed",
+            resources: [command],
+            save: ["*"],
+            metadata: { command },
+          })
+          void log("warn", `the user approved running a command unsandboxed: ${command}`)
         }
         return
       }

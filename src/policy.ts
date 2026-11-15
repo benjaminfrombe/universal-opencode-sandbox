@@ -19,7 +19,7 @@ export interface Policy {
   }
   readonly network: "deny" | "allow"
   /** What happens when a tool call asks to skip the sandbox (shell input "sandbox: false"). */
-  readonly unsandboxed: "deny" | "allow"
+  readonly unsandboxed: "deny" | "ask" | "allow"
   /** Also sandbox user "!" commands and plugin shells, not just agent shell tool calls. */
   readonly userCommands: boolean
   /** Tool names the agent may not call at all, with "*" as a wildcard ("paseo_*"). */
@@ -46,7 +46,7 @@ interface Merged {
   mode?: "enforce" | "permissive"
   filesystemMode?: "read-only" | "workspace-write"
   network?: "deny" | "allow"
-  unsandboxed?: "deny" | "allow"
+  unsandboxed?: "deny" | "ask" | "allow"
   userCommands?: boolean
   blockedTools: string[]
   writableRoots: string[]
@@ -182,7 +182,7 @@ function tighten(merged: Merged, raw: RawConfig): Merged {
     mode: strictest(merged.mode, raw.mode, "enforce", "permissive"),
     filesystemMode: strictest(merged.filesystemMode, raw.filesystem?.mode, "read-only", "workspace-write"),
     network: strictest(merged.network, raw.network, "deny", "allow"),
-    unsandboxed: strictest(merged.unsandboxed, raw.unsandboxed, "deny", "allow"),
+    unsandboxed: strictestUnsandboxed(merged.unsandboxed, raw.unsandboxed),
     userCommands: raw.sandbox_user_commands === true || merged.userCommands === true,
     blockedTools: merged.blockedTools,
     writableRoots: merged.writableRoots,
@@ -197,6 +197,18 @@ function strictest<T extends string>(current: T | undefined, incoming: unknown, 
   if (current === strict || incoming === strict) return strict
   if (incoming === loose) return loose
   return current
+}
+
+// The strictest of the explicit unsandboxed choices across layers: deny beats ask
+// beats allow, and a layer that does not mention the field leaves it untouched.
+function strictestUnsandboxed(
+  current: "deny" | "ask" | "allow" | undefined,
+  incoming: unknown,
+): "deny" | "ask" | "allow" | undefined {
+  if (incoming !== "deny" && incoming !== "ask" && incoming !== "allow") return current
+  if (current === "deny" || incoming === "deny") return "deny"
+  if (current === "ask" || incoming === "ask") return "ask"
+  return "allow"
 }
 
 // Expands a leading "~" against the home directory, like a shell would.

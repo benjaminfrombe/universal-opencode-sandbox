@@ -10,7 +10,7 @@ import { resolveExecutor } from "../src/wire"
 // file; execute.after must restore the command and remove the file.
 type Hook = (event: any) => Promise<void>
 
-const start = async (workspace: string, injected?: string) => {
+const start = async (workspace: string, injected?: string, permission?: { assert: (input: never) => Promise<void> }) => {
   if (injected) process.env.UNIVERSAL_SANDBOX_CONFIG = injected
   try {
     const hooks: Record<string, Hook> = {}
@@ -22,6 +22,7 @@ const start = async (workspace: string, injected?: string) => {
           return { dispose: async () => undefined }
         },
       },
+      ...(permission ? { permission } : {}),
     } as never)
     return { hooks, dispose }
   } finally {
@@ -63,6 +64,32 @@ live("plugin hooks", () => {
       hooks["execute.before"]({ tool: "shell", sessionID: "ses_1", id: "call_2", input }),
     ).rejects.toThrow()
     expect(input.command).toBe("echo escape")
+    await dispose?.()
+  })
+
+  test("ask mode prompts the user and passes the command through only after approval", async () => {
+    const asks: unknown[] = []
+    const { hooks, dispose } = await start(workspace, JSON.stringify({ unsandboxed: "ask" }), {
+      assert: async (input: never) => {
+        asks.push(input)
+        const resources = (input as { resources: string[] }).resources
+        if (resources[0] === "echo denied") throw new Error("rejected by the user")
+      },
+    })
+    const approved: { command?: string; sandbox?: boolean } = { command: "echo outside", sandbox: false }
+    await hooks["execute.before"]({ tool: "shell", sessionID: "ses_1", id: "call_2a", input: approved })
+    // The prompt names the exact command under the dedicated "unsandboxed" action.
+    expect(asks).toEqual([
+      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], save: ["*"], metadata: { command: "echo outside" } },
+    ])
+    // An approval leaves the command unwrapped: it runs outside the sandbox.
+    expect(approved.command).toBe("echo outside")
+
+    const denied: { command?: string; sandbox?: boolean } = { command: "echo denied", sandbox: false }
+    await expect(
+      hooks["execute.before"]({ tool: "shell", sessionID: "ses_1", id: "call_2b", input: denied }),
+    ).rejects.toThrow("rejected by the user")
+    expect(denied.command).toBe("echo denied")
     await dispose?.()
   })
 

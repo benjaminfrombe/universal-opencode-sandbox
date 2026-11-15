@@ -124,8 +124,22 @@ start them through `sandboxed-shell` instead of a plain shell. Whoever controls
 terminal creation controls the choice: point every terminal at the wrapper and nobody
 gets an unsandboxed one. Inside opencode itself, two layers close the agent's route
 to a host app's terminals: `blocked_tools` denies the terminal tools at every tool
-call (a repository config cannot re-allow it), and opencode's own `permission` rules
-hide them from the agent's tool catalog entirely.
+call (a repository config cannot re-allow it), and opencode's own `permissions` rules
+hide them from the agent's tool catalog entirely:
+
+```jsonc
+// opencode.jsonc, next to this plugin in your config
+{
+  "permissions": [
+    { "action": "paseo_create_terminal", "resource": "*", "effect": "deny" },
+    { "action": "paseo_send_terminal_keys", "resource": "*", "effect": "deny" },
+    { "action": "paseo_capture_terminal", "resource": "*", "effect": "deny" }
+  ]
+}
+```
+
+Use the `permissions` array: the older `permission` object is deprecated and, on
+current releases, silently ignored.
 
 ## Known limitations
 

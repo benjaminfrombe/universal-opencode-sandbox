@@ -101,7 +101,7 @@ instead of asking again. A deny rule for the action hides the tool entirely:
 {
   "permissions": [
     // Never ask again for these unsandboxed commands:
-    { "action": "unsandboxed", "resource": "git push:*", "effect": "allow" },
+    { "action": "unsandboxed", "resource": "git push *", "effect": "allow" },
     // Or remove the escape route altogether (blocked_tools works too):
     { "action": "unsandboxed", "resource": "*", "effect": "deny" }
   ]

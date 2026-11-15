@@ -216,10 +216,23 @@ export function expandHome(item: string, home = os.homedir()) {
   return item === "~" ? home : item.startsWith("~/") ? path.join(home, item.slice(2)) : item
 }
 
+/**
+ * Matches a value against a pattern the way OpenCode's own permission rules do:
+ * "*" matches any sequence, "?" one character, a trailing " *" also matches the bare
+ * prefix, and backslashes normalize to forward slashes.
+ */
+export function matchesWildcard(value: string, pattern: string): boolean {
+  const normalized = value.replaceAll("\\", "/")
+  let escaped = pattern
+    .replaceAll("\\", "/")
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".")
+  if (escaped.endsWith(" .*")) escaped = escaped.slice(0, -3) + "( .*)?"
+  return new RegExp(`^${escaped}$`, "s").test(normalized)
+}
+
 /** True when the tool name matches a blocked pattern; "*" in a pattern matches any sequence. */
 export function toolBlocked(tool: string, patterns: readonly string[]): boolean {
-  return patterns.some((pattern) => {
-    const source = pattern.split("*").map((part) => part.replace(/[|\\{}()[\]^$+?.]/g, "\\$&")).join(".*")
-    return new RegExp(`^${source}$`).test(tool)
-  })
+  return patterns.some((pattern) => matchesWildcard(tool, pattern))
 }

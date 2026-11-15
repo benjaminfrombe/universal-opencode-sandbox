@@ -10,7 +10,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { Plugin } from "@opencode/plugin"
-import { resolvePolicy, toolBlocked } from "./policy.js"
+import { matchesWildcard, resolvePolicy, toolBlocked } from "./policy.js"
 import { quote, resolveExecutor, unsupportedNetwork, wireRequest } from "./wire.js"
 import { unsandboxedShellTool } from "./unsandboxed.js"
 
@@ -72,6 +72,37 @@ export default Plugin.define({
         : await context.tool.transform((editor) => {
             editor.add(unsandboxedShellTool(context.location.directory))
           })
+
+    // Ask mode must actually ask. Hosts like Paseo give sessions a catch-all allow rule
+    // ("*" matches every action), which would make the approval prompt resolve silently.
+    // This guard forces the prompt for every unsandboxed escape unless a rule that names
+    // this action specifically allows the command: a pre-approval, or a saved "always
+    // allow" from an earlier prompt. Deny rules short-circuit before the hook, so they
+    // keep blocking without it.
+    const askGuard =
+      policy.unsandboxed === "ask"
+        ? await context.permission.hook("evaluate", async (event) => {
+            if (event.action !== "unsandboxed" || event.effect !== "allow") return
+            const force = () => {
+              event.effect = "ask"
+              event.message = "running a command outside the sandbox needs your approval"
+            }
+            try {
+              const session = await context.session.get({ sessionID: event.sessionID })
+              const specific = (session.permissions ?? []).some(
+                (rule) =>
+                  rule.effect === "allow" &&
+                  rule.action !== "*" &&
+                  matchesWildcard(event.action, rule.action) &&
+                  event.resources.every((resource) => matchesWildcard(resource, rule.resource)),
+              )
+              if (!specific) force()
+            } catch {
+              // When the session rules cannot be read, fail closed and ask anyway.
+              force()
+            }
+          })
+        : undefined
 
     const before = await context.tool.hook("execute.before", async (event) => {
       // Tool blocks hold in every mode: they are an explicit policy choice, like denied
@@ -193,6 +224,7 @@ export default Plugin.define({
       await after.dispose()
       if (shellBefore) await shellBefore.dispose()
       if (escapeTool) await escapeTool.dispose()
+      if (askGuard) await askGuard.dispose()
       for (const callID of [...inFlight.keys()]) cleanup(callID)
     }
   },

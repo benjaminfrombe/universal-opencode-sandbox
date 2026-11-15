@@ -11,7 +11,14 @@ import { resolveExecutor } from "../src/wire"
 // file; execute.after must restore the command and remove the file.
 type Hook = (event: any) => Promise<void>
 
-const start = async (workspace: string, injected?: string, permission?: { assert: (input: never) => Promise<void> }) => {
+const start = async (
+  workspace: string,
+  injected?: string,
+  options?: {
+    assert?: (input: never) => Promise<void>
+    sessionPermissions?: { action: string; resource: string; effect: string }[]
+  },
+) => {
   if (injected) process.env.UNIVERSAL_SANDBOX_CONFIG = injected
   try {
     const hooks: Record<string, Hook> = {}
@@ -37,7 +44,18 @@ const start = async (workspace: string, injected?: string, permission?: { assert
           return { dispose: async () => undefined }
         },
       },
-      ...(permission ? { permission } : {}),
+      permission: {
+        assert: options?.assert ?? (async () => undefined),
+        hook: async (name: string, callback: Hook) => {
+          hooks[`permission:${name}`] = callback
+          return { dispose: async () => undefined }
+        },
+      },
+      session: {
+        get: async () => ({
+          permissions: options?.sessionPermissions ?? [{ action: "*", resource: "*", effect: "allow" }],
+        }),
+      },
     } as never)
     return { hooks, tools, dispose }
   } finally {
@@ -170,6 +188,41 @@ live("plugin hooks", () => {
       else process.env.SHELL = shell
       await dispose?.()
     }
+  })
+
+  test("ask mode forces the prompt when the session auto-allows everything", async () => {
+    const { hooks, dispose } = await start(workspace, JSON.stringify({ unsandboxed: "ask" }), {
+      sessionPermissions: [{ action: "*", resource: "*", effect: "allow" }],
+    })
+    const event = { sessionID: "ses_1", action: "unsandboxed", resources: ["echo x"], effect: "allow" as string }
+    await hooks["permission:evaluate"](event)
+    expect(event.effect).toBe("ask")
+    await dispose?.()
+  })
+
+  test("a rule that names the unsandboxed action keeps a pre-approval silent", async () => {
+    const { hooks, dispose } = await start(workspace, JSON.stringify({ unsandboxed: "ask" }), {
+      sessionPermissions: [{ action: "unsandboxed", resource: "git push *", effect: "allow" }],
+    })
+    const preapproved = { sessionID: "ses_1", action: "unsandboxed", resources: ["git push origin main"], effect: "allow" as string }
+    await hooks["permission:evaluate"](preapproved)
+    expect(preapproved.effect).toBe("allow")
+    const other = { sessionID: "ses_1", action: "unsandboxed", resources: ["rm -rf /"], effect: "allow" as string }
+    await hooks["permission:evaluate"](other)
+    expect(other.effect).toBe("ask")
+    await dispose?.()
+  })
+
+  test("the guard leaves other actions and deny mode alone", async () => {
+    const { hooks, dispose } = await start(workspace, JSON.stringify({ unsandboxed: "ask" }))
+    const shell = { sessionID: "ses_1", action: "shell", resources: ["echo x"], effect: "allow" as string }
+    await hooks["permission:evaluate"](shell)
+    expect(shell.effect).toBe("allow")
+    await dispose?.()
+
+    const denied = await start(workspace)
+    expect(denied.hooks["permission:evaluate"]).toBeUndefined()
+    await denied.dispose?.()
   })
 
   test("sweeps in-flight request files on unload", async () => {

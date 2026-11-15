@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { defaultPolicy } from "../src/policy"
-import { PROTECTED, quote, wireRequest, type WireInput } from "../src/wire"
+import { PROTECTED, quote, unsupportedNetwork, wireRequest, type WireInput } from "../src/wire"
 
 // The wire request resolves symlinks (macOS /var -> /private/var), so expectations use real paths.
 const tmp = fs.realpathSync(os.tmpdir())
@@ -96,5 +96,14 @@ describe("quote", () => {
     expect(quote("/bin/sh", "darwin")).toBe(`'/bin/sh'`)
     expect(quote("/c", "win32")).toBe("/c")
     expect(quote('say "hi" there\\', "win32")).toBe(`"say \\"hi\\" there\\\\"`)
+  })
+})
+
+describe("unsupportedNetwork", () => {
+  test("flags a network-deny policy the Windows backend cannot enforce", () => {
+    expect(unsupportedNetwork("win32", "deny")).toBe(true)
+    expect(unsupportedNetwork("win32", "allow")).toBe(false)
+    expect(unsupportedNetwork("darwin", "deny")).toBe(false)
+    expect(unsupportedNetwork("linux", "deny")).toBe(false)
   })
 })

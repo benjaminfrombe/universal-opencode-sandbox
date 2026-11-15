@@ -127,6 +127,15 @@ function existing(paths: string[], platform: NodeJS.Platform) {
   return platform === "linux" ? paths.filter(exists) : paths
 }
 
+/**
+ * A network-deny policy the Windows backend accepts but does not enforce (verified
+ * against Windows 11 and MXC 1.1.0: direct egress still works). Callers fail closed
+ * instead of running a command with network access the user denied.
+ */
+export function unsupportedNetwork(platform: NodeJS.Platform, network: "deny" | "allow") {
+  return platform === "win32" && network === "deny"
+}
+
 /** Resolves the bundled MXC executor binary for this platform and architecture. */
 export function resolveExecutor(platform: NodeJS.Platform = process.platform, arch: string = process.arch): string {
   const name =

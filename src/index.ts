@@ -11,7 +11,7 @@ import os from "node:os"
 import path from "node:path"
 import { Plugin } from "@opencode/plugin"
 import { resolvePolicy } from "./policy.js"
-import { quote, resolveExecutor, wireRequest } from "./wire.js"
+import { quote, resolveExecutor, unsupportedNetwork, wireRequest } from "./wire.js"
 
 interface ShellInput {
   command?: unknown
@@ -34,11 +34,17 @@ export default Plugin.define({
 
     const enforce = policy.mode === "enforce"
     const executor = resolveExecutor()
+    const gap = unsupportedNetwork(process.platform, policy.network)
     const unavailable = !fs.existsSync(executor)
-    if (unavailable) {
+    const reason = unavailable
+      ? executor
+      : gap
+        ? 'the sandbox backend on Windows cannot enforce network denial yet; set network "allow" in the sandbox config to run sandboxed with filesystem containment only'
+        : undefined
+    if (reason !== undefined) {
       void log(
         enforce ? "error" : "warn",
-        `${executor}; ${enforce ? `shell commands will be blocked (set mode "permissive" to run unsandboxed)` : "commands will run without a sandbox"}`,
+        `${reason}; ${enforce ? "shell commands will be blocked (set mode \"permissive\" to run unsandboxed)" : "commands will run without a sandbox"}`,
       )
     }
 
@@ -71,8 +77,8 @@ export default Plugin.define({
         return
       }
 
-      if (unavailable) {
-        if (enforce) throw new Error(`${BLOCKED}: ${executor}`)
+      if (unavailable || gap) {
+        if (enforce) throw new Error(`${BLOCKED}: ${reason}`)
         return
       }
 

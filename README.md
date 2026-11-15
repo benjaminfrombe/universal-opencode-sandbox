@@ -52,8 +52,9 @@ on purpose: they can be set from a repository's own config.
     "mode": "workspace-write",
     "writable_roots": [],
     // Paths the sandboxed command can neither read nor write. Unset (default):
-    // the standard credential list below. Setting the list replaces it: the
-    // entries are then yours, and per-project overrides only add to them.
+    // the standard credential list below. Setting the list REPLACES it: this
+    // example would drop every default except these two, so copy the standard
+    // list below and extend it rather than writing a short one from scratch.
     "denied_paths": ["~/.ssh", "~/.aws"]
   },
   // "deny" (default) blocks all network access for sandboxed commands.
@@ -86,20 +87,29 @@ credential stores. A stolen long-lived credential cannot be undone by a restart,
 so reading is denied even though the network usually is too: a secret read once
 can be copied into the workspace and walk out through a commit.
 
-- `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.netrc`, `~/.kube`, `~/.azure` - identity
-  directories: keys, cloud credentials, cluster tokens
-- `~/.config/gcloud` - GCP credentials and service-account keys
+Paths that live in a platform's app-data directory are listed per platform; the
+variants for the other platforms are nonexistent there and simply do nothing.
+
+- `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.azure` - identity directories:
+  keys, cloud credentials, cluster tokens (identical on every platform)
+- `~/.netrc` and `~/_netrc` - plaintext logins for curl and friends (the latter
+  is the Windows convention)
+- `~/.config/gcloud`, `~/AppData/Roaming/gcloud` - GCP credentials and
+  service-account keys (Linux/macOS and Windows)
 - `~/.npmrc`, `~/.pypirc`, `~/.cargo/credentials`, `~/.docker/config.json` -
   registry tokens of the major package managers and Docker
-- `~/.config/gh/hosts.yml` and `~/Library/Application Support/gh/hosts.yml` -
-  the GitHub CLI token (both config-directory conventions)
-- `~/.local/share/opencode/auth.json` - OpenCode provider API keys
+- `~/.config/gh/hosts.yml`, `~/Library/Application Support/gh/hosts.yml`,
+  `~/AppData/Roaming/gh/hosts.yml` - the GitHub CLI token in each platform's
+  config-directory convention
+- `~/.local/share/opencode/auth.json` - OpenCode provider API keys (OpenCode
+  uses this XDG path on every platform, Windows included)
 - `~/.claude/.credentials.json`, `~/.codex/auth.json` - credentials of the
   other agent CLIs
 
 Setting `denied_paths` replaces this list. On Linux only paths that exist are
 enforced (an upstream deny bug would otherwise create stray directories,
-microsoft/mxc#1780); on macOS not-yet-existing paths are protected too.
+microsoft/mxc#1780); on macOS and Windows not-yet-existing paths are protected
+too.
 
 ## What is enforced
 

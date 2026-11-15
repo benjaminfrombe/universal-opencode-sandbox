@@ -16,6 +16,10 @@ describe("resolvePolicy", () => {
     expect(policy.filesystem.mode).toBe("workspace-write")
     expect(policy.filesystem.deniedPaths).toContain("~/.ssh")
     expect(policy.filesystem.deniedPaths).toContain("~/.local/share/opencode/auth.json")
+    // The app-data tools are covered per platform, Windows variants included.
+    expect(policy.filesystem.deniedPaths).toContain("~/_netrc")
+    expect(policy.filesystem.deniedPaths).toContain("~/AppData/Roaming/gcloud")
+    expect(policy.filesystem.deniedPaths).toContain("~/AppData/Roaming/gh/hosts.yml")
   })
 
   test("an explicit denied_paths list replaces the defaults and later layers only add", () => {

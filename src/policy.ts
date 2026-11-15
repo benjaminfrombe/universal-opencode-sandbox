@@ -66,21 +66,29 @@ const realHome = () => os.userInfo().homedir
  * by a restart, so reading is denied even though the network usually is too: a secret
  * read once can be copied into the workspace and walk out through a commit. Setting
  * denied_paths in the config replaces this list; the entries are then the user's.
+ *
+ * Paths that live in a platform's app-data directory are listed per platform: the
+ * Windows variants are nonexistent (and therefore no-ops) on macOS and Linux, and
+ * vice versa. Entries under the profile directory itself (~/.ssh and friends) are
+ * identical everywhere.
  */
 export const defaultDeniedPaths = [
   "~/.ssh",
   "~/.aws",
   "~/.gnupg",
   "~/.netrc",
+  "~/_netrc",
   "~/.kube",
   "~/.azure",
   "~/.config/gcloud",
+  "~/AppData/Roaming/gcloud",
   "~/.npmrc",
   "~/.pypirc",
   "~/.cargo/credentials",
   "~/.docker/config.json",
   "~/.config/gh/hosts.yml",
   "~/Library/Application Support/gh/hosts.yml",
+  "~/AppData/Roaming/gh/hosts.yml",
   "~/.local/share/opencode/auth.json",
   "~/.claude/.credentials.json",
   "~/.codex/auth.json",

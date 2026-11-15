@@ -17,7 +17,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir dist --target node --format esm --external @microsoft/mxc-sdk --external @opencode/plugin && bun x tsc --emitDeclarationOnly --declaration --outDir dist",
+    "build": "bun build ./src/index.ts --outdir dist --target node --format esm --external @microsoft/mxc-sdk --external @opencode/plugin && bun x tsc -p tsconfig.declarations.json",
     "dev": "bun run --watch src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
@@ -35,6 +35,14 @@
     "agent-safety"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/benjaminfrombe/universal-opencode-sandbox.git"
+  },
+  "homepage": "https://github.com/benjaminfrombe/universal-opencode-sandbox#readme",
+  "bugs": {
+    "url": "https://github.com/benjaminfrombe/universal-opencode-sandbox/issues"
+  },
   "dependencies": {
     "@microsoft/mxc-sdk": "^1.1.0"
   },

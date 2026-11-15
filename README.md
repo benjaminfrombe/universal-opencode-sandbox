@@ -68,7 +68,7 @@ on purpose: they can be set from a repository's own config.
   // escape routes outside the sandbox, such as a host app's unsandboxed terminal
   // tools (an agent can otherwise spawn or drive a raw shell there). Unlike
   // opencode's own permission rules, a repository config cannot re-allow these.
-  // For example, for the Paseo host app:
+  // See "Blocking host tools" below; for example, for the Paseo host app:
   // "blocked_tools": ["paseo_create_terminal", "paseo_send_terminal_keys", "paseo_capture_terminal"],
   // Per-project overrides, keyed by the workspace's absolute path. Every field is
   // optional and can only make the policy stricter, never looser.
@@ -158,11 +158,32 @@ disable the admin terminal for regular users. The plugin confines opencode agent
 terminals spawned by a host app (for example Paseo) are confined by having the host
 start them through `sandboxed-shell` instead of a plain shell. Whoever controls
 terminal creation controls the choice: point every terminal at the wrapper and nobody
-gets an unsandboxed one. Inside opencode itself, two layers close the agent's route
-to a host app's terminals: `blocked_tools` denies the terminal tools at every tool
-call (a repository config cannot re-allow it), and opencode's own `permissions` rules
-hide them from the agent's tool catalog entirely. For the Paseo host app, for
-example, the terminal tools are denied like this:
+gets an unsandboxed one. For the agent's own route to a host app's tools, see
+[Blocking host tools](#blocking-host-tools).
+
+## Blocking host tools
+
+The OS sandbox confines the processes it spawns, but a host app around opencode can
+register tools that spawn processes of their own, outside the sandbox: a terminal
+tool runs a raw shell, and an agent with access to it can type into one. Two layers
+close that route. Both take the tool names as the agent sees them, and both support
+`*` as a wildcard.
+
+1. `blocked_tools` in this plugin's config denies every matching tool call, whatever
+   asks for it. It is read only from user-owned config outside the workspace, so a
+   repository config cannot re-allow a blocked tool.
+
+```jsonc
+// ~/.config/universal-opencode-sandbox/config.json
+{
+  "blocked_tools": ["paseo_create_terminal", "paseo_send_terminal_keys", "paseo_capture_terminal"]
+}
+```
+
+2. opencode's own `permissions` rules hide the tools from the agent's catalog
+   entirely, so the model never even sees them. Use the `permissions` array: the
+   older `permission` object is deprecated and, on current releases, silently
+   ignored.
 
 ```jsonc
 // opencode.jsonc - example: denying the Paseo terminal tools
@@ -175,8 +196,10 @@ example, the terminal tools are denied like this:
 }
 ```
 
-Use the `permissions` array: the older `permission` object is deprecated and, on
-current releases, silently ignored.
+The names above are the Paseo terminal tools as a worked example; substitute the
+tool names of your own host app, or use a wildcard such as `"paseo_*"`. Layer 1 is
+the enforcement (a call cannot run), layer 2 the clean-up (the tool is not offered
+to the model at all); together a repository config cannot talk its way around them.
 
 ## Known limitations
 

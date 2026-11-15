@@ -26,9 +26,11 @@ Requires OpenCode 2.x (the `@opencode/plugin` 2.x contract).
 ```
 
 The sandbox is on by default once the plugin is installed, in its strictest useful
-mode: the workspace is writable (and the system temp directory), everything else is
-read-only, the network is denied, and a command the sandbox cannot run is blocked
-rather than run unconfined.
+mode: the workspace and the system temp directory are writable, everything else is
+write-denied, the network is denied, credential stores are unreadable (see the
+default list below), and a command the sandbox cannot run is blocked rather than
+run unconfined. No configuration is required for that; the config file below only
+changes it.
 
 ## Configure
 
@@ -45,11 +47,13 @@ on purpose: they can be set from a repository's own config.
   // "permissive" runs it unsandboxed with a warning.
   "mode": "enforce",
   "filesystem": {
-    // "read-only" (default) denies every write; "workspace-write" allows writes to
-    // the workspace, the temp directory, and writable_roots.
+    // "workspace-write" (default) allows writes to the workspace, the temp
+    // directory, and writable_roots; "read-only" denies every write.
     "mode": "workspace-write",
     "writable_roots": [],
-    // Paths the sandboxed command can neither read nor write, e.g. credentials.
+    // Paths the sandboxed command can neither read nor write. Unset (default):
+    // the standard credential list below. Setting the list replaces it: the
+    // entries are then yours, and per-project overrides only add to them.
     "denied_paths": ["~/.ssh", "~/.aws"]
   },
   // "deny" (default) blocks all network access for sandboxed commands.
@@ -74,6 +78,28 @@ on purpose: they can be set from a repository's own config.
 ```
 
 `UNIVERSAL_SANDBOX_CONFIG` (a JSON string) tightens the same fields per invocation.
+
+### Default denied paths
+
+Without a `denied_paths` entry, the sandbox denies reading and writing these
+credential stores. A stolen long-lived credential cannot be undone by a restart,
+so reading is denied even though the network usually is too: a secret read once
+can be copied into the workspace and walk out through a commit.
+
+- `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.netrc`, `~/.kube`, `~/.azure` - identity
+  directories: keys, cloud credentials, cluster tokens
+- `~/.config/gcloud` - GCP credentials and service-account keys
+- `~/.npmrc`, `~/.pypirc`, `~/.cargo/credentials`, `~/.docker/config.json` -
+  registry tokens of the major package managers and Docker
+- `~/.config/gh/hosts.yml` and `~/Library/Application Support/gh/hosts.yml` -
+  the GitHub CLI token (both config-directory conventions)
+- `~/.local/share/opencode/auth.json` - OpenCode provider API keys
+- `~/.claude/.credentials.json`, `~/.codex/auth.json` - credentials of the
+  other agent CLIs
+
+Setting `denied_paths` replaces this list. On Linux only paths that exist are
+enforced (an upstream deny bug would otherwise create stray directories,
+microsoft/mxc#1780); on macOS not-yet-existing paths are protected too.
 
 ## What is enforced
 

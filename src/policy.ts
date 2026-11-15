@@ -51,11 +51,40 @@ interface Merged {
   blockedTools: string[]
   writableRoots: string[]
   deniedPaths: string[]
+  /** True once any layer set denied_paths: the user's list then replaces the defaults. */
+  deniedPathsExplicit?: boolean
 }
 
 // The real home directory from the system password database, not the HOME env var:
 // Paseo and some sandboxes set HOME to the workspace, which would break config lookup.
 const realHome = () => os.userInfo().homedir
+
+/**
+ * Credential stores a sandboxed command can neither read nor write by default: the
+ * classic identity directories plus the plaintext credential files of the major
+ * CLIs, cloud SDKs and agent tools. A stolen long-lived credential cannot be undone
+ * by a restart, so reading is denied even though the network usually is too: a secret
+ * read once can be copied into the workspace and walk out through a commit. Setting
+ * denied_paths in the config replaces this list; the entries are then the user's.
+ */
+export const defaultDeniedPaths = [
+  "~/.ssh",
+  "~/.aws",
+  "~/.gnupg",
+  "~/.netrc",
+  "~/.kube",
+  "~/.azure",
+  "~/.config/gcloud",
+  "~/.npmrc",
+  "~/.pypirc",
+  "~/.cargo/credentials",
+  "~/.docker/config.json",
+  "~/.config/gh/hosts.yml",
+  "~/Library/Application Support/gh/hosts.yml",
+  "~/.local/share/opencode/auth.json",
+  "~/.claude/.credentials.json",
+  "~/.codex/auth.json",
+]
 
 const configDirectory = () =>
   path.join(process.env.XDG_CONFIG_HOME ?? path.join(realHome(), ".config"), "universal-opencode-sandbox")
@@ -65,7 +94,10 @@ const configPath = () => path.join(configDirectory(), "config.json")
 export const defaultPolicy: Policy = {
   enabled: true,
   mode: "enforce",
-  filesystem: { mode: "read-only", writableRoots: [], deniedPaths: [] },
+  // workspace-write out of the box: read-only would break git and builds on first
+  // use. Everything outside the workspace, the temp directory and writable_roots
+  // stays write-denied, and the network stays denied.
+  filesystem: { mode: "workspace-write", writableRoots: [], deniedPaths: defaultDeniedPaths },
   network: "deny",
   unsandboxed: "deny",
   userCommands: false,
@@ -75,7 +107,9 @@ export const defaultPolicy: Policy = {
 /**
  * Resolves the sandbox policy for a workspace: the global config file, tightened by the
  * matching per-project override, tightened by UNIVERSAL_SANDBOX_CONFIG. Security fields
- * only ever get stricter across explicit values; roots and denied paths accumulate.
+ * only ever get stricter across explicit values; roots and blocked tools accumulate.
+ * Denied paths start from defaultDeniedPaths and are replaced wholesale by the first
+ * layer that sets denied_paths, then extended by later layers.
  */
 export function resolvePolicy(
   workspace: string,
@@ -99,9 +133,9 @@ export function resolvePolicy(
     enabled: merged.enabled ?? true,
     mode: merged.mode ?? "enforce",
     filesystem: {
-      mode: merged.filesystemMode ?? "read-only",
+      mode: merged.filesystemMode ?? "workspace-write",
       writableRoots: [...new Set(merged.writableRoots)],
-      deniedPaths: [...new Set(merged.deniedPaths)],
+      deniedPaths: merged.deniedPathsExplicit ? [...new Set(merged.deniedPaths)] : defaultDeniedPaths,
     },
     network: merged.network ?? "deny",
     unsandboxed: merged.unsandboxed ?? "deny",
@@ -125,7 +159,11 @@ function tighten(merged: Merged, raw: RawConfig): Merged {
     for (const root of raw.filesystem.writable_roots) if (typeof root === "string") merged.writableRoots.push(root)
   }
   if (Array.isArray(raw.filesystem?.denied_paths)) {
-    for (const item of raw.filesystem.denied_paths) if (typeof item === "string") merged.deniedPaths.push(item)
+    // The first layer to set denied_paths replaces the defaults; later layers only
+    // add. All layers here are user-owned, so the user's own list is the authority.
+    const items = raw.filesystem.denied_paths.filter((item): item is string => typeof item === "string")
+    merged.deniedPaths = merged.deniedPathsExplicit ? [...merged.deniedPaths, ...items] : items
+    merged.deniedPathsExplicit = true
   }
   if (Array.isArray(raw.blocked_tools)) {
     for (const item of raw.blocked_tools) if (typeof item === "string") merged.blockedTools.push(item)
@@ -141,6 +179,7 @@ function tighten(merged: Merged, raw: RawConfig): Merged {
     blockedTools: merged.blockedTools,
     writableRoots: merged.writableRoots,
     deniedPaths: merged.deniedPaths,
+    deniedPathsExplicit: merged.deniedPathsExplicit,
   }
 }
 

@@ -20,7 +20,10 @@ const input = (overrides: Partial<WireInput> = {}): WireInput => ({
 
 describe("wireRequest", () => {
   test("read-only keeps the workspace read-only and denies the network", () => {
-    const request = wireRequest(input(), "darwin")
+    const request = wireRequest(
+      input({ policy: { ...defaultPolicy, filesystem: { mode: "read-only", writableRoots: [], deniedPaths: [] } } }),
+      "darwin",
+    )
     expect(request.containment).toBe("seatbelt")
     expect(request.seatbelt).toEqual({})
     expect(request.filesystem).toEqual({ readwritePaths: [], readonlyPaths: [workspace], deniedPaths: [] })

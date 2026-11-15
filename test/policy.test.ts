@@ -11,6 +11,29 @@ describe("resolvePolicy", () => {
     expect(resolvePolicy("/project", {}, "/nonexistent/universal-opencode-sandbox/config.json")).toEqual(defaultPolicy)
   })
 
+  test("defaults to workspace-write with the standard credential list, no config needed", () => {
+    const policy = resolvePolicy("/project", {}, "/nonexistent/universal-opencode-sandbox/config.json")
+    expect(policy.filesystem.mode).toBe("workspace-write")
+    expect(policy.filesystem.deniedPaths).toContain("~/.ssh")
+    expect(policy.filesystem.deniedPaths).toContain("~/.local/share/opencode/auth.json")
+  })
+
+  test("an explicit denied_paths list replaces the defaults and later layers only add", () => {
+    const global = {
+      filesystem: { denied_paths: ["~/.ssh"] },
+      projects: { "/project": { filesystem: { denied_paths: ["~/.kube"] } } },
+    }
+    const file = path.join(home, "universal-opencode-sandbox-test-deniedpaths.json")
+    fs.writeFileSync(file, JSON.stringify(global))
+    try {
+      const policy = resolvePolicy("/project", {}, file)
+      // The global list replaced the defaults; the project override extended it.
+      expect(policy.filesystem.deniedPaths).toEqual(["~/.ssh", "~/.kube"])
+    } finally {
+      fs.rmSync(file, { force: true })
+    }
+  })
+
   test("reads the global config and keeps security fields strictest across layers", () => {
     const global = {
       mode: "permissive",

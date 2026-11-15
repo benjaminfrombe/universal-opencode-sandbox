@@ -105,6 +105,13 @@ identically to "allow once" - the request carries no save scope, so nothing is
 ever stored. The persistent form of an approval is `unsandboxed_allow` in this
 plugin's own config, where it stays visible and reviewable.
 
+What the prompt looks like is up to the host: opencode's terminal UI checks the
+save scope and omits its "always allow" option entirely, so there the choice is
+simply allow once or reject; the web and desktop apps still render the button,
+which then approves just that call. The command is always visible somewhere -
+in the request message where the host renders it, and in the tool call with
+its full input in the timeline right above the prompt.
+
 ```jsonc
 // opencode.jsonc
 {

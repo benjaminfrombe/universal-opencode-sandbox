@@ -113,7 +113,7 @@ live("plugin hooks", () => {
     await hooks["execute.before"]({ tool: "shell", sessionID: "ses_1", id: "call_2a", input: approved })
     // The prompt names the exact command under the dedicated "unsandboxed" action.
     expect(asks).toEqual([
-      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], save: ["echo outside"], metadata: { command: "echo outside" } },
+      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], metadata: { command: "echo outside" } },
     ])
     // An approval leaves the command unwrapped: it runs outside the sandbox.
     expect(approved.command).toBe("echo outside")
@@ -154,7 +154,7 @@ live("plugin hooks", () => {
     const input = { command: "echo outside" }
     await hooks["execute.before"]({ tool: "shell_unsandboxed", sessionID: "ses_1", id: "call_e1", input })
     expect(asks).toEqual([
-      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], save: ["echo outside"], metadata: { command: "echo outside" } },
+      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], metadata: { command: "echo outside" } },
     ])
     await dispose?.()
   })

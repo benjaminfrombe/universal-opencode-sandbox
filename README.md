@@ -95,8 +95,9 @@ The prompt uses its own permission action, `unsandboxed`, so an allow rule for
 `shell` never silently covers an escape - and you can pre-approve command
 patterns through opencode's own permission rules, which the prompt then honors
 instead of asking again. A deny rule for the action hides the tool entirely.
-"Always allow" on the prompt saves the exact command only - per project,
-persistently - never a blanket pattern; "Allow once" approves just that call.
+The prompt offers no persistent "always allow": every escape is approved per
+call, and the only way to pre-approve one is an explicit permission rule in
+your own config, where it stays visible and reviewable.
 
 ```jsonc
 // opencode.jsonc

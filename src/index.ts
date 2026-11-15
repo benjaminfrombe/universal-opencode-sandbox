@@ -125,7 +125,6 @@ export default Plugin.define({
             sessionID: event.sessionID,
             action: "unsandboxed",
             resources: [escape],
-            save: [escape],
             metadata: { command: escape },
           })
           void log("warn", `the user approved running a command unsandboxed: ${escape}`)
@@ -147,14 +146,13 @@ export default Plugin.define({
         if (policy.unsandboxed === "ask") {
           // Prompts the user with the exact command and waits for the reply; resolves when
           // allowed, rejects on a deny rule or a rejection. The dedicated action keeps an
-          // allow rule for "shell" from silently approving an escape, and lets the user
-          // pre-approve command patterns through opencode's own permission rules. "Always
-          // allow" saves the exact command only, never a blanket pattern.
+          // allow rule for "shell" from silently approving an escape. No save scope is
+          // offered: a sandbox escape is never persistently pre-approved from a prompt;
+          // the deliberate path for that is an opencode permission rule.
           await context.permission.assert({
             sessionID: event.sessionID,
             action: "unsandboxed",
             resources: [command],
-            save: [command],
             metadata: { command },
           })
           void log("warn", `the user approved running a command unsandboxed: ${command}`)

@@ -84,18 +84,26 @@ on purpose: they can be set from a repository's own config.
 
 ### Escaping the sandbox with approval
 
-`unsandboxed: "ask"` turns a `sandbox: false` request into an approval prompt:
-the agent names the command, you approve or deny it, and only an approval runs
-it outside the sandbox. The prompt uses its own permission action,
-`unsandboxed`, so an allow rule for `shell` never silently covers an escape -
-and you can pre-approve command patterns through opencode's own permission
-rules, which the prompt then honors instead of asking again:
+`unsandboxed: "ask"` registers an escape tool, `shell_unsandboxed`: one shell
+command outside the sandbox, and every call needs your approval - the prompt
+shows the exact command, and only an approval runs it. A rejection or a deny
+rule fails the call. With `unsandboxed: "allow"` the tool runs commands without
+asking; with `"deny"` (the default) the tool is not registered at all, so an
+agent cannot even ask.
+
+The prompt uses its own permission action, `unsandboxed`, so an allow rule for
+`shell` never silently covers an escape - and you can pre-approve command
+patterns through opencode's own permission rules, which the prompt then honors
+instead of asking again. A deny rule for the action hides the tool entirely:
 
 ```jsonc
-// opencode.jsonc - example: never ask again for these unsandboxed commands
+// opencode.jsonc
 {
   "permissions": [
-    { "action": "unsandboxed", "resource": "git push:*", "effect": "allow" }
+    // Never ask again for these unsandboxed commands:
+    { "action": "unsandboxed", "resource": "git push:*", "effect": "allow" },
+    // Or remove the escape route altogether (blocked_tools works too):
+    { "action": "unsandboxed", "resource": "*", "effect": "deny" }
   ]
 }
 ```

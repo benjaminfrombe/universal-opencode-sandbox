@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process"
 import { describe, expect, test } from "bun:test"
 import fs from "node:fs"
 import os from "node:os"
@@ -14,6 +15,7 @@ const start = async (workspace: string, injected?: string, permission?: { assert
   if (injected) process.env.UNIVERSAL_SANDBOX_CONFIG = injected
   try {
     const hooks: Record<string, Hook> = {}
+    const tools: { name: string; execute: (input: unknown, context: { sessionID: string }) => Promise<unknown> }[] = []
     const dispose = await plugin.setup({
       location: { directory: workspace },
       tool: {
@@ -21,10 +23,23 @@ const start = async (workspace: string, injected?: string, permission?: { assert
           hooks[name] = callback
           return { dispose: async () => undefined }
         },
+        transform: async (callback: (editor: unknown) => void) => {
+          callback({
+            add: (tool: { name: string; execute: (input: unknown, context: { sessionID: string }) => Promise<unknown> }) => {
+              tools.push(tool)
+            },
+            list: () => tools,
+            get: () => undefined,
+            namespace: () => undefined,
+            update: () => undefined,
+            remove: () => undefined,
+          })
+          return { dispose: async () => undefined }
+        },
       },
       ...(permission ? { permission } : {}),
     } as never)
-    return { hooks, dispose }
+    return { hooks, tools, dispose }
   } finally {
     if (injected) delete process.env.UNIVERSAL_SANDBOX_CONFIG
   }
@@ -102,6 +117,59 @@ live("plugin hooks", () => {
 
     const disabled = await start(workspace, JSON.stringify({ enabled: false }))
     expect(Object.keys(disabled.hooks)).toEqual([])
+  })
+
+  test("deny mode (the default) registers no escape tool, so an agent cannot even ask", async () => {
+    const { tools, dispose } = await start(workspace)
+    expect(tools).toEqual([])
+    await dispose?.()
+  })
+
+  test("ask mode registers the escape tool and prompts per command", async () => {
+    const asks: unknown[] = []
+    const { hooks, tools, dispose } = await start(workspace, JSON.stringify({ unsandboxed: "ask" }), {
+      assert: async (input: never) => {
+        asks.push(input)
+      },
+    })
+    expect(tools.map((tool) => tool.name)).toEqual(["shell_unsandboxed"])
+    const input = { command: "echo outside" }
+    await hooks["execute.before"]({ tool: "shell_unsandboxed", sessionID: "ses_1", id: "call_e1", input })
+    expect(asks).toEqual([
+      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], save: ["*"], metadata: { command: "echo outside" } },
+    ])
+    await dispose?.()
+  })
+
+  test("the escape tool runs a command and reports the exit code", async () => {
+    const { tools, dispose } = await start(workspace, JSON.stringify({ unsandboxed: "allow" }))
+    const tool = tools.find((item) => item.name === "shell_unsandboxed")
+    const shell = process.env.SHELL
+    // POSIX sh everywhere; a sandboxed test run denies nested spawns, so probe first.
+    process.env.SHELL = "/bin/sh"
+    const canSpawn = await new Promise<boolean>((resolve) => {
+      const probe = spawn("/bin/sh", ["-c", "echo ok"])
+      probe.on("error", () => resolve(false))
+      probe.on("close", () => resolve(true))
+    })
+    try {
+      if (!canSpawn) return
+      // The describe-scope workspace is already cleaned up by the time tests run
+      // (the other tests only use it as a string), so give the run a real cwd.
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "universal-sandbox-escape-"))
+      const result = (await tool?.execute(
+        { command: "echo hello-from-escape", workdir: dir },
+        { sessionID: "ses_1" },
+      )) as {
+        content?: string
+      }
+      expect(String(result?.content)).toContain("hello-from-escape")
+      expect(String(result?.content)).toContain("exit code 0")
+    } finally {
+      if (shell === undefined) delete process.env.SHELL
+      else process.env.SHELL = shell
+      await dispose?.()
+    }
   })
 
   test("sweeps in-flight request files on unload", async () => {

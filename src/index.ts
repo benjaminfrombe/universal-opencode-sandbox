@@ -12,6 +12,7 @@ import path from "node:path"
 import { Plugin } from "@opencode/plugin"
 import { resolvePolicy, toolBlocked } from "./policy.js"
 import { quote, resolveExecutor, unsupportedNetwork, wireRequest } from "./wire.js"
+import { unsandboxedShellTool } from "./unsandboxed.js"
 
 interface ShellInput {
   command?: unknown
@@ -61,6 +62,17 @@ export default Plugin.define({
       fs.rmSync(pending.file, { force: true })
     }
 
+    // The escape tool exists only when the policy allows escaping at all: with
+    // unsandboxed "deny" it is not registered, so an agent cannot even ask. Its
+    // permission action is "unsandboxed", so opencode's permission rules can hide
+    // it (deny) or pre-approve command patterns (allow) through one vocabulary.
+    const escapeTool =
+      policy.unsandboxed === "deny"
+        ? undefined
+        : await context.tool.transform((editor) => {
+            editor.add(unsandboxedShellTool(context.location.directory))
+          })
+
     const before = await context.tool.hook("execute.before", async (event) => {
       // Tool blocks hold in every mode: they are an explicit policy choice, like denied
       // paths, not a fallback for a sandbox that cannot run. This closes escape routes
@@ -69,6 +81,22 @@ export default Plugin.define({
       if (toolBlocked(event.tool, policy.blockedTools)) {
         void log("warn", `tool call to ${event.tool} blocked by the sandbox config (blocked_tools)`)
         throw new Error(`universal-opencode-sandbox: the tool ${event.tool} is blocked by the sandbox config`)
+      }
+      if (event.tool === "shell_unsandboxed") {
+        // The escape tool's own gate: ask mode turns the call into an approval
+        // prompt naming the exact command; allow mode is pre-approved by config.
+        const escape = (event.input as { command?: unknown } | undefined)?.command
+        if (policy.unsandboxed === "ask" && typeof escape === "string" && escape !== "") {
+          await context.permission.assert({
+            sessionID: event.sessionID,
+            action: "unsandboxed",
+            resources: [escape],
+            save: ["*"],
+            metadata: { command: escape },
+          })
+          void log("warn", `the user approved running a command unsandboxed: ${escape}`)
+        }
+        return
       }
       if (event.tool !== "shell") return
       const input = (event.input ?? {}) as ShellInput
@@ -164,6 +192,7 @@ export default Plugin.define({
       await before.dispose()
       await after.dispose()
       if (shellBefore) await shellBefore.dispose()
+      if (escapeTool) await escapeTool.dispose()
       for (const callID of [...inFlight.keys()]) cleanup(callID)
     }
   },

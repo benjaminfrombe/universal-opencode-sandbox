@@ -38,6 +38,8 @@ export interface WireInput {
   readonly tmpRoots?: string[]
   /** Extra KEY=VALUE environment entries layered over the backend default (used by the sandboxed-shell CLI). */
   readonly environment?: string[]
+  /** Absolute paths the sandboxed command must never write, even when a writable root covers them (the sandbox's own config and request directories). */
+  readonly guarded?: string[]
 }
 
 /** Maps a policy and one command onto the wire request, platform-aware. */
@@ -53,13 +55,16 @@ export function wireRequest(input: WireInput, platform: NodeJS.Platform = proces
   ]
   const protectedPaths = PROTECTED.map((item) => path.join(workspace, item))
   const deniedPaths = input.policy.filesystem.deniedPaths.map((item) => real(expandHome(item)))
+  const guarded = (input.guarded ?? []).map(real)
 
   let filesystem: WireRequest["filesystem"]
   if (input.policy.filesystem.mode !== "workspace-write") {
-    filesystem = { readwritePaths: [], readonlyPaths: [input.workspace], deniedPaths: existing(deniedPaths, platform) }
+    filesystem = { readwritePaths: [], readonlyPaths: [workspace], deniedPaths: existing(deniedPaths, platform) }
   } else if (platform === "win32") {
     // ProcessContainer does not enforce read-only carve-outs under writable roots, so
     // protected paths are denied outright; opencode's own read tool still reads them.
+    // Guarded paths are ignored here: they cannot be carved out, and denying them would
+    // also stop the executor from reading its own request file.
     filesystem = { readwritePaths: writable, readonlyPaths: [], deniedPaths: [...protectedPaths, ...deniedPaths] }
   } else if (platform === "linux") {
     // bwrap cannot bind a read-only source that does not exist (the launch fails), and
@@ -67,12 +72,12 @@ export function wireRequest(input: WireInput, platform: NodeJS.Platform = proces
     // host (microsoft/mxc#1780), so only paths that exist are protected on Linux.
     filesystem = {
       readwritePaths: writable,
-      readonlyPaths: protectedPaths.filter((item) => exists(item)),
+      readonlyPaths: unique([...protectedPaths, ...guarded].filter((item) => exists(item))),
       deniedPaths: existing(deniedPaths, platform),
     }
   } else {
     // Seatbelt enforces read-only carve-outs for existing and not-yet-existing paths.
-    filesystem = { readwritePaths: writable, readonlyPaths: protectedPaths, deniedPaths }
+    filesystem = { readwritePaths: writable, readonlyPaths: unique([...protectedPaths, ...guarded]), deniedPaths }
   }
 
   const request: WireRequest = {
@@ -104,6 +109,10 @@ export function wireRequest(input: WireInput, platform: NodeJS.Platform = proces
       : { network: { egress: { default: "allow" } } }),
   }
   return request
+}
+
+function unique(paths: string[]) {
+  return [...new Set(paths)]
 }
 
 function exists(item: string) {
@@ -144,7 +153,14 @@ export function resolveExecutor(platform: NodeJS.Platform = process.platform, ar
   const name =
     platform === "darwin" ? "mxc-exec-mac" : platform === "win32" ? "wxc-exec.exe" : platform === "linux" ? "lxc-exec" : undefined
   if (!name) return `no MXC executor exists for ${platform}`
-  const sdk = path.dirname(fileURLToPath(import.meta.resolve("@microsoft/mxc-sdk/package.json")))
+  // A missing or unresolvable SDK must come back as a reason, never as a throw: a host
+  // that survives a failed plugin setup would otherwise run commands unsandboxed.
+  let sdk: string
+  try {
+    sdk = path.dirname(fileURLToPath(import.meta.resolve("@microsoft/mxc-sdk/package.json")))
+  } catch (error) {
+    return `the @microsoft/mxc-sdk package could not be resolved: ${error instanceof Error ? error.message : String(error)}`
+  }
   const executor = path.join(sdk, "bin", arch === "arm64" ? "arm64" : "x64", name)
   if (!fs.existsSync(executor)) {
     // MXC 1.1.0 ships no darwin-x64 runtime: Intel Macs fail closed until it does.

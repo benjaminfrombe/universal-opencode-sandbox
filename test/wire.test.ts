@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { defaultPolicy } from "../src/policy"
-import { PROTECTED, quote, resolveExecutor, unsupportedNetwork, wireRequest, type WireInput } from "../src/wire"
+import { executorCommand, PROTECTED, quote, resolveExecutor, unsupportedNetwork, wireRequest, type WireInput } from "../src/wire"
 
 // The wire request resolves symlinks (macOS /var -> /private/var), so expectations use real paths.
 const tmp = fs.realpathSync(os.tmpdir())
@@ -181,6 +181,28 @@ describe("quote", () => {
     expect(quote("/bin/sh", "darwin")).toBe(`'/bin/sh'`)
     expect(quote("/c", "win32")).toBe("/c")
     expect(quote('say "hi" there\\', "win32")).toBe(`"say \\"hi\\" there\\\\"`)
+  })
+})
+
+describe("executorCommand", () => {
+  const executor = "/opt/mxc/mxc-exec-mac"
+  const file = "/tmp/requests/call_1.json"
+  const message = "universal-opencode-sandbox] the sandboxed command failed"
+
+  test("annotates failures on POSIX shells and preserves the exit code", () => {
+    const command = executorCommand(executor, file, "darwin")
+    expect(command.startsWith(`${quote(executor, "darwin")} ${quote(file, "darwin")} || {`)).toBe(true)
+    expect(command).toContain(message)
+    expect(command).toContain(">&2")
+    expect(command).toContain("exit $sandboxExit")
+  })
+
+  test("annotates failures for the Windows PowerShell shell and preserves the exit code", () => {
+    const command = executorCommand(executor, file, "win32")
+    expect(command.startsWith(`${quote(executor, "win32")} ${quote(file, "win32")}; `)).toBe(true)
+    expect(command).toContain(message)
+    expect(command).toContain("$LASTEXITCODE")
+    expect(command).toContain("exit $sandboxExit")
   })
 })
 

@@ -19,7 +19,7 @@ import {
   stateDirectory,
   toolBlocked,
 } from "./policy.js"
-import { quote, resolveExecutor, unsupportedNetwork, wireRequest } from "./wire.js"
+import { executorCommand, quote, resolveExecutor, unsupportedNetwork, wireRequest } from "./wire.js"
 import { unsandboxedShellTool } from "./unsandboxed.js"
 
 interface ShellInput {
@@ -187,14 +187,20 @@ export default Plugin.define({
     // have no after-hook to hang on (the shell hook only fires before the command), so
     // they are tracked separately and removed on unload; anything an interrupted run
     // leaves behind is swept at the next setup once it is a day old.
-    const inFlight = new Map<string, { file: string; command: string; sessionID: string }>()
+    const inFlight = new Map<string, { file: string; command: string; sessionID: string; background: boolean }>()
     const userRequests = new Set<string>()
 
     const cleanup = (callID: string) => {
       const pending = inFlight.get(callID)
       if (pending === undefined) return
       inFlight.delete(callID)
-      fs.rmSync(pending.file, { force: true })
+      // A background command's tool call returns before the executor it spawned has read
+      // its request file, so an immediate delete makes the executor fail with the MXC
+      // "Configuration file not found" parse error. The removal is delayed long enough
+      // for the executor to have read the file at startup.
+      const remove = () => fs.rmSync(pending.file, { force: true })
+      if (pending.background) setTimeout(remove, 10_000).unref?.()
+      else remove()
     }
 
     // Writes the per-call request file for a command and returns its path.
@@ -362,8 +368,8 @@ export default Plugin.define({
           // A background command runs until it ends; a foreground one gets the tool's timeout.
           input.background === true ? 0 : (input.timeout as number) || 120_000,
         )
-        inFlight.set(event.id, { file, command, sessionID: event.sessionID })
-        input.command = `${quote(executor)} ${quote(file)}`
+        inFlight.set(event.id, { file, command, sessionID: event.sessionID, background: input.background === true })
+        input.command = executorCommand(executor, file)
       } catch (error) {
         if (policy.mode === "enforce") throw new Error(`${BLOCKED}: ${error instanceof Error ? error.message : String(error)}`)
         void log("warn", `failed to wrap the command; running unsandboxed: ${error instanceof Error ? error.message : String(error)}`)
@@ -388,7 +394,7 @@ export default Plugin.define({
         const id = `shell_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
         const file = writeRequest(id, invocation.command, invocation.cwd, invocation.timeout || 0)
         userRequests.add(file)
-        invocation.command = `${quote(executor)} ${quote(file)}`
+        invocation.command = executorCommand(executor, file)
       } catch (error) {
         if (policy.mode === "enforce") throw new Error(`${BLOCKED}: ${error instanceof Error ? error.message : String(error)}`)
         void log("warn", `failed to wrap a shell command; running unsandboxed: ${error instanceof Error ? error.message : String(error)}`)

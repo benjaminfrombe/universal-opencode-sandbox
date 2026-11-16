@@ -6,6 +6,11 @@ import { defaultPolicy, expandHome, matchesWildcard, resolvePolicy, toolBlocked 
 
 const home = os.tmpdir()
 
+// Hermetic: the tests below either pass explicit config files or expect the
+// defaults, so the developer's real global config (and admin config) must not
+// be visible through the default lookup paths.
+process.env.XDG_CONFIG_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "sandbox-policy-test-"))
+
 describe("resolvePolicy", () => {
   test("is enabled with the strictest defaults when no config exists", () => {
     expect(resolvePolicy("/project", {}, "/nonexistent/universal-opencode-sandbox/config.json")).toEqual(defaultPolicy)
@@ -77,6 +82,72 @@ describe("resolvePolicy", () => {
       expect(resolvePolicy("/other", {}, file).enabled).toBe(false)
     } finally {
       fs.rmSync(file, { force: true })
+    }
+  })
+
+  test("the admin config is the baseline: user layers tighten but cannot loosen", () => {
+    const admin = path.join(home, "universal-opencode-sandbox-test-admin.json")
+    const global = path.join(home, "universal-opencode-sandbox-test-admin-user.json")
+    fs.writeFileSync(admin, JSON.stringify({
+      enabled: true,
+      network: "deny",
+      filesystem: { mode: "workspace-write", writable_roots: ["~/shared"] },
+      unsandboxed_allow: ["git push *"],
+      blocked_tools: ["paseo_*"],
+    }))
+    fs.writeFileSync(global, JSON.stringify({
+      enabled: false,
+      network: "allow",
+      filesystem: { mode: "workspace-write", writable_roots: ["~/extra"], denied_paths: ["~/secret"] },
+      unsandboxed_allow: ["curl *"],
+      blocked_tools: ["evil_tool"],
+    }))
+    try {
+      const policy = resolvePolicy("/project", {}, global, admin)
+      // The admin's enabled decision stands; the user cannot disable.
+      expect(policy.enabled).toBe(true)
+      // Strictest wins for security fields: the user's allow cannot loosen.
+      expect(policy.network).toBe("deny")
+      // Writable roots and unsandboxed pre-approvals are admin-authoritative.
+      expect(policy.filesystem.writableRoots).toEqual(["~/shared"])
+      expect(policy.unsandboxedAllow).toEqual(["git push *"])
+      // Denied paths: the admin baseline, tightened by the user's additions.
+      expect(policy.filesystem.deniedPaths).toContain("~/secret")
+      // Blocked tools accumulate: adding is tightening.
+      expect(policy.blockedTools).toEqual(["paseo_*", "evil_tool"])
+    } finally {
+      fs.rmSync(admin, { force: true })
+      fs.rmSync(global, { force: true })
+    }
+  })
+
+  test("an admin config can disable the sandbox for everyone", () => {
+    const admin = path.join(home, "universal-opencode-sandbox-test-admin-off.json")
+    const global = path.join(home, "universal-opencode-sandbox-test-admin-off-user.json")
+    fs.writeFileSync(admin, JSON.stringify({ enabled: false }))
+    fs.writeFileSync(global, JSON.stringify({ enabled: true }))
+    try {
+      expect(resolvePolicy("/project", {}, global, admin).enabled).toBe(false)
+    } finally {
+      fs.rmSync(admin, { force: true })
+      fs.rmSync(global, { force: true })
+    }
+  })
+
+  test("without an admin config the legacy semantics apply", () => {
+    const global = path.join(home, "universal-opencode-sandbox-test-noadmin.json")
+    fs.writeFileSync(global, JSON.stringify({
+      enabled: true,
+      filesystem: { writable_roots: ["~/shared"] },
+      unsandboxed_allow: ["git push *"],
+    }))
+    try {
+      const policy = resolvePolicy("/project", {}, global)
+      expect(policy.enabled).toBe(true)
+      expect(policy.filesystem.writableRoots).toEqual(["~/shared"])
+      expect(policy.unsandboxedAllow).toEqual(["git push *"])
+    } finally {
+      fs.rmSync(global, { force: true })
     }
   })
 

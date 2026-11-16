@@ -38,21 +38,31 @@ Policy is read only from places a sandboxed command cannot reach, so a repositor
 can never enable, loosen or tighten your sandbox. OpenCode plugin options are ignored
 on purpose: they can be set from a repository's own config.
 
-`~/.config/universal-opencode-sandbox/config.json` (respecting `XDG_CONFIG_HOME`):
+### Admin config (managed deployments)
+
+For managed machines there is a second, admin-owned config that acts as the policy
+baseline. When it exists, user-owned config files can only tighten it: they cannot
+disable the sandbox (`enabled`), widen the writable roots, or add unsandboxed
+pre-approvals. Everything else keeps the strictest-wins rule, so a user can still
+deny more. Paths:
+
+- Linux and macOS: `/etc/universal-opencode-sandbox/config.json`
+- Windows: `%PROGRAMDATA%\universal-opencode-sandbox\config.json`
+
+The file uses the same schema as the user config. Without it, behavior is unchanged.
+
+User config: `~/.config/universal-opencode-sandbox/config.json` (respecting `XDG_CONFIG_HOME`):
 
 ```jsonc
 {
-  "enabled": true,
-  // "enforce" (default) blocks a command when the sandbox cannot run it;
-  // "permissive" runs it unsandboxed with a warning.
   // Master switch: "enabled": false turns every hook into a no-op - nothing is
   // sandboxed, blocked or prompted - until you set it back to true. The policy
   // is re-read on every tool call, so flipping it takes effect immediately,
   // without a restart. (At plugin load with enabled false nothing is registered
   // at all; set it back to true and restart the session to re-arm.)
   "enabled": true,
-  // "enforce" blocks a command when the sandbox cannot run it; "permissive"
-  // runs it unsandboxed with a warning instead.
+  // "enforce" (default) blocks a command when the sandbox cannot run it;
+  // "permissive" runs it unsandboxed with a warning.
   "mode": "enforce",
   "filesystem": {
     // "workspace-write" (default) allows writes to the workspace, the temp
@@ -96,12 +106,13 @@ on purpose: they can be set from a repository's own config.
 
 ### Escaping the sandbox with approval
 
-`unsandboxed: "ask"` registers an escape tool, `shell_unsandboxed`: one shell
+`unsandboxed: "ask"` registers an escape tool, `shell_escalated`: one shell
 command outside the sandbox, and every call needs your approval - the prompt
 shows the exact command, and only an approval runs it. A rejection or a deny
 rule fails the call. With `unsandboxed: "allow"` the tool runs commands without
 asking; with `"deny"` (the default) the tool is not registered at all, so an
-agent cannot even ask.
+agent cannot even ask. The 0.4.x name `shell_unsandboxed` keeps working as a
+deprecated alias of the same tool.
 
 The prompt uses its own permission action, `unsandboxed`, so an allow rule for
 `shell` never silently covers an escape - and you can pre-approve command

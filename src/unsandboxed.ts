@@ -49,9 +49,9 @@ const OUTPUT_LIMIT = 200_000
 const RETURN_LIMIT = 50_000
 
 export const unsandboxedShellTool = (workspace: string): ToolRegistration => ({
-  name: "shell_unsandboxed",
+  name: "shell_escalated",
   description:
-    "Run one shell command OUTSIDE the sandbox, on the host. The user approves every call and sees the exact command (or has pre-approved a pattern). " +
+    "Run one shell command escalated: outside the sandbox, on the host. The user approves every call and sees the exact command (or has pre-approved a pattern). " +
     "Use this only for what the sandboxed shell cannot do and the user asked for, such as publishing a package, pushing over SSH, or reaching the network; " +
     "for everything else prefer the sandboxed shell tool.",
   input: {

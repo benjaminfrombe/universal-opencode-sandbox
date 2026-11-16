@@ -77,6 +77,13 @@ export default Plugin.define({
         ? undefined
         : await context.tool.transform((editor) => {
             editor.add(unsandboxedShellTool(context.location.directory))
+            // Deprecated alias from 0.4.x: same executor and gate, kept so existing
+            // configs and muscle memory keep working through 0.5.x.
+            editor.add({
+              ...unsandboxedShellTool(context.location.directory),
+              name: "shell_unsandboxed",
+              description: "Deprecated alias of shell_escalated. Use shell_escalated.",
+            })
           })
 
     // Ask mode must actually ask. Hosts like Paseo give sessions a catch-all allow rule
@@ -129,7 +136,7 @@ export default Plugin.define({
         void log("warn", `tool call to ${event.tool} blocked by the sandbox config (blocked_tools)`)
         throw new Error(`universal-opencode-sandbox: the tool ${event.tool} is blocked by the sandbox config`)
       }
-      if (event.tool === "shell_unsandboxed") {
+      if (event.tool === "shell_escalated" || event.tool === "shell_unsandboxed") {
         // The escape tool's own gate: ask mode turns the call into an approval
         // prompt naming the exact command; allow mode is pre-approved by config.
         const escape = (event.input as { command?: unknown } | undefined)?.command

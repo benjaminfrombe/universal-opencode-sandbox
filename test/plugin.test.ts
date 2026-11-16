@@ -199,18 +199,25 @@ live("plugin hooks", () => {
         asks.push(input)
       },
     })
-    expect(tools.map((tool) => tool.name)).toEqual(["shell_unsandboxed"])
+    expect(tools.map((tool) => tool.name)).toEqual(["shell_escalated", "shell_unsandboxed"])
     const input = { command: "echo outside" }
-    await hooks["execute.before"]({ tool: "shell_unsandboxed", sessionID: "ses_1", id: "call_e1", input })
+    await hooks["execute.before"]({ tool: "shell_escalated", sessionID: "ses_1", id: "call_e1", input })
     expect(asks).toEqual([
       { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], metadata: { command: "echo outside" } },
+    ])
+    // The deprecated alias is the same gate under the old name.
+    const alias = { command: "echo alias" }
+    await hooks["execute.before"]({ tool: "shell_unsandboxed", sessionID: "ses_1", id: "call_e2", input: alias })
+    expect(asks).toEqual([
+      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], metadata: { command: "echo outside" } },
+      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo alias"], metadata: { command: "echo alias" } },
     ])
     await dispose?.()
   })
 
   test("the escape tool runs a command and reports the exit code", async () => {
     const { tools, dispose } = await start(workspace, JSON.stringify({ unsandboxed: "allow" }))
-    const tool = tools.find((item) => item.name === "shell_unsandboxed")
+    const tool = tools.find((item) => item.name === "shell_escalated")
     const shell = process.env.SHELL
     // POSIX sh everywhere; a sandboxed test run denies nested spawns, so probe first.
     process.env.SHELL = "/bin/sh"

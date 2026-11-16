@@ -104,6 +104,19 @@ const configDirectory = () =>
 
 const configPath = () => path.join(configDirectory(), "config.json")
 
+/**
+ * The admin (system-wide) config path: admin-owned and therefore not writable by
+ * the account the agent runs as. When this file exists it is the policy baseline,
+ * and user-owned layers can only tighten it - they cannot disable the sandbox,
+ * widen the writable roots, or add unsandboxed pre-approvals.
+ */
+const adminConfigPath = () => {
+  if (process.platform === "win32") {
+    return path.join(process.env.PROGRAMDATA ?? "C:\\ProgramData", "universal-opencode-sandbox", "config.json")
+  }
+  return path.join("/etc", "universal-opencode-sandbox", "config.json")
+}
+
 export const defaultPolicy: Policy = {
   enabled: true,
   mode: "enforce",
@@ -119,26 +132,36 @@ export const defaultPolicy: Policy = {
 }
 
 /**
- * Resolves the sandbox policy for a workspace: the global config file, tightened by the
- * matching per-project override, tightened by UNIVERSAL_SANDBOX_CONFIG. Security fields
- * only ever get stricter across explicit values; roots and blocked tools accumulate.
- * Denied paths start from defaultDeniedPaths and are replaced wholesale by the first
- * layer that sets denied_paths, then extended by later layers.
+ * Resolves the sandbox policy for a workspace. When the admin config exists it is
+ * the baseline (and locks loosening fields); on top of it the global config file,
+ * the matching per-project override and UNIVERSAL_SANDBOX_CONFIG can only tighten.
+ * Without an admin config the user-owned layers keep the legacy semantics: security
+ * fields only ever get stricter across explicit values, roots and blocked tools
+ * accumulate, and any layer may set enabled: false. Denied paths start from
+ * defaultDeniedPaths and are replaced wholesale by the first layer that sets
+ * denied_paths, then extended by later layers.
  */
 export function resolvePolicy(
   workspace: string,
   environment: NodeJS.ProcessEnv = process.env,
   globalFile: string = configPath(),
+  adminFile: string = adminConfigPath(),
 ): Policy {
   let merged: Merged = { writableRoots: [], deniedPaths: [], blockedTools: [], unsandboxedAllow: [] }
+  const admin = readConfig(adminFile)
+  let locked = false
+  if (admin) {
+    merged = tighten(merged, admin)
+    locked = true
+  }
   const global = readConfig(globalFile)
-  if (global) merged = tighten(merged, global)
+  if (global) merged = tighten(merged, global, locked)
   const project = global?.projects?.[workspace]
-  if (project) merged = tighten(merged, project)
+  if (project) merged = tighten(merged, project, locked)
   const injected = environment.UNIVERSAL_SANDBOX_CONFIG
   if (injected) {
     try {
-      merged = tighten(merged, JSON.parse(injected) as RawConfig)
+      merged = tighten(merged, JSON.parse(injected) as RawConfig, locked)
     } catch {
       // A malformed injected config is ignored rather than disabling the sandbox.
     }
@@ -168,10 +191,17 @@ function readConfig(file: string): RawConfig | undefined {
 }
 
 // Explicit values only get stricter across layers: any layer choosing the strict value
-// wins for good, and a layer that does not mention a field leaves it untouched.
-function tighten(merged: Merged, raw: RawConfig): Merged {
-  if (Array.isArray(raw.filesystem?.writable_roots)) {
-    for (const root of raw.filesystem.writable_roots) if (typeof root === "string") merged.writableRoots.push(root)
+// wins for good, and a layer that does not mention a field leaves it untouched. With
+// an admin layer present (locked), user-owned layers cannot loosen: writable roots and
+// unsandboxed pre-approvals are ignored, and the admin's enabled decision stands.
+function tighten(merged: Merged, raw: RawConfig, locked = false): Merged {
+  if (!locked) {
+    if (Array.isArray(raw.filesystem?.writable_roots)) {
+      for (const root of raw.filesystem.writable_roots) if (typeof root === "string") merged.writableRoots.push(root)
+    }
+    if (Array.isArray(raw.unsandboxed_allow)) {
+      for (const item of raw.unsandboxed_allow) if (typeof item === "string") merged.unsandboxedAllow.push(item)
+    }
   }
   if (Array.isArray(raw.filesystem?.denied_paths)) {
     // The first layer to set denied_paths replaces the defaults; later layers only
@@ -183,12 +213,10 @@ function tighten(merged: Merged, raw: RawConfig): Merged {
   if (Array.isArray(raw.blocked_tools)) {
     for (const item of raw.blocked_tools) if (typeof item === "string") merged.blockedTools.push(item)
   }
-  if (Array.isArray(raw.unsandboxed_allow)) {
-    for (const item of raw.unsandboxed_allow) if (typeof item === "string") merged.unsandboxedAllow.push(item)
-  }
   return {
-    // Any layer can turn the sandbox off; all layers here are user-owned, so false wins.
-    enabled: raw.enabled === undefined ? merged.enabled : raw.enabled === false ? false : merged.enabled === false ? false : true,
+    // With an admin layer the admin's enabled decision stands; without one, any
+    // layer can turn the sandbox off (all layers here are user-owned, so false wins).
+    enabled: locked ? merged.enabled : raw.enabled === undefined ? merged.enabled : raw.enabled === false ? false : merged.enabled === false ? false : true,
     mode: strictest(merged.mode, raw.mode, "enforce", "permissive"),
     filesystemMode: strictest(merged.filesystemMode, raw.filesystem?.mode, "read-only", "workspace-write"),
     network: strictest(merged.network, raw.network, "deny", "allow"),

@@ -1,6 +1,6 @@
 {
   "name": "universal-opencode-sandbox",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Universal OS-level sandbox for OpenCode agent shell commands on macOS, Linux and Windows, enforced by Microsoft MXC",
   "type": "module",
   "main": "dist/index.js",

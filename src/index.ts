@@ -223,7 +223,7 @@ export default Plugin.define({
 
     // The escape tool exists only when the policy allows escaping at all: with
     // unsandboxed "deny" at load it is not registered, so an agent cannot even ask.
-    // Its permission action is "unsandboxed", so opencode's permission rules can hide
+    // Its permission action is "shell_escalated", so opencode's permission rules can hide
     // it (deny) or pre-approve command patterns (allow) through one vocabulary.
     const escapeTool =
       policy.unsandboxed === "deny"
@@ -250,7 +250,7 @@ export default Plugin.define({
       refreshPolicy()
       // With the kill switch off, the guard stands down: no forced prompts.
       if (!policy.enabled || policy.unsandboxed !== "ask") return
-      if (event.action !== "unsandboxed") return
+      if (event.action !== "shell_escalated") return
       // The prompt must name the command: it is the only thing the user approves,
       // and hosts render the message but not necessarily the resources.
       event.message = `Run this command outside the sandbox:\n\n${event.resources.join(" ")}`
@@ -303,7 +303,7 @@ export default Plugin.define({
           if (!preapproved(escape, policy.unsandboxedAllow)) {
             await context.permission.assert({
               sessionID: event.sessionID,
-              action: "unsandboxed",
+              action: "shell_escalated",
               resources: [escape],
               metadata: { command: escape },
             })
@@ -342,7 +342,7 @@ export default Plugin.define({
           if (!preapproved(command, policy.unsandboxedAllow)) {
             await context.permission.assert({
               sessionID: event.sessionID,
-              action: "unsandboxed",
+              action: "shell_escalated",
               resources: [command],
               metadata: { command },
             })

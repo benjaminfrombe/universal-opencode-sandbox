@@ -152,9 +152,9 @@ live("plugin hooks", () => {
     })
     const approved: { command?: string; sandbox?: boolean } = { command: "echo outside", sandbox: false }
     await hooks["execute.before"]({ tool: "shell", sessionID: "ses_1", id: "call_2a", input: approved })
-    // The prompt names the exact command under the dedicated "unsandboxed" action.
+    // The prompt names the exact command under the dedicated "shell_escalated" action.
     expect(asks).toEqual([
-      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], metadata: { command: "echo outside" } },
+      { sessionID: "ses_1", action: "shell_escalated", resources: ["echo outside"], metadata: { command: "echo outside" } },
     ])
     // An approval leaves the command unwrapped: it runs outside the sandbox.
     expect(approved.command).toBe("echo outside")
@@ -222,14 +222,14 @@ live("plugin hooks", () => {
     const input = { command: "echo outside" }
     await hooks["execute.before"]({ tool: "shell_escalated", sessionID: "ses_1", id: "call_e1", input })
     expect(asks).toEqual([
-      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], metadata: { command: "echo outside" } },
+      { sessionID: "ses_1", action: "shell_escalated", resources: ["echo outside"], metadata: { command: "echo outside" } },
     ])
     // The deprecated alias is the same gate under the old name.
     const alias = { command: "echo alias" }
     await hooks["execute.before"]({ tool: "shell_unsandboxed", sessionID: "ses_1", id: "call_e2", input: alias })
     expect(asks).toEqual([
-      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo outside"], metadata: { command: "echo outside" } },
-      { sessionID: "ses_1", action: "unsandboxed", resources: ["echo alias"], metadata: { command: "echo alias" } },
+      { sessionID: "ses_1", action: "shell_escalated", resources: ["echo outside"], metadata: { command: "echo outside" } },
+      { sessionID: "ses_1", action: "shell_escalated", resources: ["echo alias"], metadata: { command: "echo alias" } },
     ])
     await dispose?.()
   })
@@ -271,7 +271,7 @@ live("plugin hooks", () => {
     })
     const event = {
       sessionID: "ses_1",
-      action: "unsandboxed",
+      action: "shell_escalated",
       resources: ["echo x"],
       effect: "allow" as string,
       message: undefined as string | undefined,
@@ -285,12 +285,12 @@ live("plugin hooks", () => {
 
   test("a rule that names the unsandboxed action keeps a pre-approval silent", async () => {
     const { hooks, dispose } = await start(workspace, JSON.stringify({ unsandboxed: "ask" }), {
-      sessionPermissions: [{ action: "unsandboxed", resource: "git push *", effect: "allow" }],
+      sessionPermissions: [{ action: "shell_escalated", resource: "git push *", effect: "allow" }],
     })
-    const preapproved = { sessionID: "ses_1", action: "unsandboxed", resources: ["git push origin main"], effect: "allow" as string }
+    const preapproved = { sessionID: "ses_1", action: "shell_escalated", resources: ["git push origin main"], effect: "allow" as string }
     await hooks["permission:evaluate"](preapproved)
     expect(preapproved.effect).toBe("allow")
-    const other = { sessionID: "ses_1", action: "unsandboxed", resources: ["rm -rf /"], effect: "allow" as string }
+    const other = { sessionID: "ses_1", action: "shell_escalated", resources: ["rm -rf /"], effect: "allow" as string }
     await hooks["permission:evaluate"](other)
     expect(other.effect).toBe("ask")
     await dispose?.()
@@ -306,7 +306,7 @@ live("plugin hooks", () => {
     // The guard is always registered but checks the live policy: with unsandboxed
     // "deny" it stands down and leaves an allowed escape alone.
     const denied = await start(workspace)
-    const untouched = { sessionID: "ses_1", action: "unsandboxed", resources: ["echo x"], effect: "allow" as string }
+    const untouched = { sessionID: "ses_1", action: "shell_escalated", resources: ["echo x"], effect: "allow" as string }
     await denied.hooks["permission:evaluate"](untouched)
     expect(untouched.effect).toBe("allow")
     await denied.dispose?.()
@@ -339,7 +339,7 @@ live("plugin hooks", () => {
       input: { command: "rm -rf /tmp/x" },
     })
     expect(asks).toEqual([
-      { sessionID: "ses_1", action: "unsandboxed", resources: ["rm -rf /tmp/x"], metadata: { command: "rm -rf /tmp/x" } },
+      { sessionID: "ses_1", action: "shell_escalated", resources: ["rm -rf /tmp/x"], metadata: { command: "rm -rf /tmp/x" } },
     ])
     await dispose?.()
   })
@@ -379,7 +379,7 @@ live("plugin hooks", () => {
     const previous = process.env.UNIVERSAL_SANDBOX_CONFIG
     process.env.UNIVERSAL_SANDBOX_CONFIG = JSON.stringify({ unsandboxed: "ask", sandbox_user_commands: true })
     try {
-      const event = { sessionID: "ses_1", action: "unsandboxed", resources: ["echo x"], effect: "allow" as string }
+      const event = { sessionID: "ses_1", action: "shell_escalated", resources: ["echo x"], effect: "allow" as string }
       await hooks["permission:evaluate"](event)
       expect(event.effect).toBe("ask")
       const invocation = { command: "echo user", cwd: workspace, timeout: 0, shell: "/bin/sh", env: {} }
@@ -443,11 +443,11 @@ live("plugin hooks", () => {
 
   test("a session allow rule with a wildcard does not silently approve a chained command", async () => {
     const { hooks, dispose } = await start(workspace, JSON.stringify({ unsandboxed: "ask" }), {
-      sessionPermissions: [{ action: "unsandboxed", resource: "git push *", effect: "allow" }],
+      sessionPermissions: [{ action: "shell_escalated", resource: "git push *", effect: "allow" }],
     })
     const chained = {
       sessionID: "ses_1",
-      action: "unsandboxed",
+      action: "shell_escalated",
       resources: ["git push origin main; rm -rf /"],
       effect: "allow" as string,
     }

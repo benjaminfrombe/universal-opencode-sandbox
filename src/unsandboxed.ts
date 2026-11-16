@@ -2,7 +2,7 @@
 // approval. Registered by the plugin when the policy allows escaping at all
 // (unsandboxed "ask" or "allow"); with "deny" it does not exist, so an agent
 // cannot even ask. The execute.before hook performs the approval prompt under
-// the permission action "unsandboxed", so opencode's own permission rules can
+// the permission action "shell_escalated", so opencode's own permission rules can
 // deny the tool outright, pre-approve command patterns, or let every call ask.
 
 import { spawn } from "node:child_process"
@@ -112,9 +112,9 @@ export const unsandboxedShellTool = (workspace: string): ToolRegistration => ({
     required: ["command"],
     additionalProperties: false,
   } as ToolInputSchema,
-  // The shared "unsandboxed" action lets opencode's permission rules hide this tool
-  // (deny) or pre-approve command patterns (allow) through one vocabulary.
-  options: { permission: "unsandboxed" },
+  // The shared "shell_escalated" action lets opencode's permission rules hide this
+  // tool (deny) or pre-approve command patterns (allow) through one vocabulary.
+  options: { permission: "shell_escalated" },
   execute: async (raw, context) => {
     const input = (raw ?? {}) as { command?: unknown; timeout?: unknown; workdir?: unknown }
     const command = input.command

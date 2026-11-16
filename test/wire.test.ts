@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { defaultPolicy } from "../src/policy"
-import { PROTECTED, quote, unsupportedNetwork, wireRequest, type WireInput } from "../src/wire"
+import { PROTECTED, quote, resolveExecutor, unsupportedNetwork, wireRequest, type WireInput } from "../src/wire"
 
 // The wire request resolves symlinks (macOS /var -> /private/var), so expectations use real paths.
 const tmp = fs.realpathSync(os.tmpdir())
@@ -90,6 +90,69 @@ describe("wireRequest", () => {
     })
     expect(request.processContainer?.capabilities).toEqual(["internetClient"])
     expect(request.network).toEqual({ egress: { default: "allow" } })
+  })
+})
+
+describe("wireRequest symlinked workspace and guarded paths", () => {
+  const writeMode = { ...defaultPolicy, filesystem: { mode: "workspace-write" as const, writableRoots: [], deniedPaths: [] } }
+  const readMode = { ...defaultPolicy, filesystem: { mode: "read-only" as const, writableRoots: [], deniedPaths: [] } }
+
+  test("read-only mode emits the symlink-resolved workspace", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "universal-sandbox-test-"))
+    try {
+      const target = path.join(directory, "target")
+      const link = path.join(directory, "link")
+      fs.mkdirSync(target)
+      fs.symlinkSync(target, link)
+      const request = wireRequest(input({ workspace: link, cwd: link, policy: readMode }), "darwin")
+      expect(request.filesystem.readonlyPaths).toEqual([fs.realpathSync(target)])
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("guarded paths are read-only on macOS, existing or not, without duplicates", () => {
+    const request = wireRequest(
+      input({ policy: writeMode, guarded: ["/guard/config", "/guard/config", path.join(workspace, ".claude")] }),
+      "darwin",
+    )
+    expect(request.filesystem.readonlyPaths).toEqual([
+      ...PROTECTED.map((item) => path.join(workspace, item)),
+      "/guard/config",
+    ])
+  })
+
+  test("guarded paths are read-only on Linux only when they exist", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "universal-sandbox-test-"))
+    try {
+      const present = path.join(directory, "present")
+      fs.mkdirSync(present)
+      const request = wireRequest(
+        input({ workspace: directory, cwd: directory, policy: writeMode, guarded: [present, path.join(directory, "missing")] }),
+        "linux",
+      )
+      expect(request.filesystem.readonlyPaths).toEqual([fs.realpathSync(present)])
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("guarded paths are ignored on Windows", () => {
+    const request = wireRequest(input({ policy: writeMode, guarded: ["/guard/config"] }), "win32")
+    expect(request.filesystem.readonlyPaths).toEqual([])
+    expect(request.filesystem.deniedPaths).not.toContain("/guard/config")
+  })
+})
+
+describe("resolveExecutor", () => {
+  test("resolves an existing executor on this platform", () => {
+    expect(fs.existsSync(resolveExecutor())).toBe(true)
+  })
+
+  test("returns a reason string for an unsupported platform instead of throwing", () => {
+    const result = resolveExecutor("freebsd")
+    expect(fs.existsSync(result)).toBe(false)
+    expect(result).toContain("freebsd")
   })
 })
 

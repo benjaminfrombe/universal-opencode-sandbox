@@ -65,7 +65,15 @@ export function wireRequest(input: WireInput, platform: NodeJS.Platform = proces
     // protected paths are denied outright; opencode's own read tool still reads them.
     // Guarded paths are ignored here: they cannot be carved out, and denying them would
     // also stop the executor from reading its own request file.
-    filesystem = { readwritePaths: writable, readonlyPaths: [], deniedPaths: [...protectedPaths, ...deniedPaths] }
+    // ProcessContainer aborts the launch with ERROR_PATH_NOT_FOUND when a denied path
+    // sits under a parent directory that does not exist (verified against MXC 1.1.0 on
+    // Windows 11 ARM64: a missing file or a path with a missing parent kills every
+    // command), so such entries are dropped, matching the Linux behavior.
+    filesystem = {
+      readwritePaths: writable,
+      readonlyPaths: [],
+      deniedPaths: [...protectedPaths, ...deniedPaths].filter((item) => exists(path.dirname(item))),
+    }
   } else if (platform === "linux") {
     // bwrap cannot bind a read-only source that does not exist (the launch fails), and
     // denying a missing path makes the backend create it as a stray directory on the
@@ -97,7 +105,12 @@ export function wireRequest(input: WireInput, platform: NodeJS.Platform = proces
       : {}),
     lifecycle: { destroyOnExit: true, preservePolicy: false },
     process: {
-      commandLine: input.command,
+      // ProcessContainer spawns the command line directly, so shell builtins (echo,
+      // dir, type) cannot be resolved and the launch fails with ERROR_PATH_NOT_FOUND
+      // (verified against MXC 1.1.0 on Windows 11 ARM64); commands are routed through
+      // cmd the way Windows shell tools always run them. /d skips AutoRun, /s makes
+      // the outer quotes of the wrapped command strip reliably.
+      commandLine: platform === "win32" ? `cmd.exe /d /s /c ${quote(input.command, platform)}` : input.command,
       timeout: input.timeout,
       cwd,
       inheritDefaultEnv: true,

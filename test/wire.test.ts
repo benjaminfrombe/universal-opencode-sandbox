@@ -72,24 +72,43 @@ describe("wireRequest", () => {
   })
 
   test("workspace-write denies protected paths outright on Windows", () => {
-    const request = wireRequest(
-      input({
-        policy: {
-          ...defaultPolicy,
-          network: "allow",
-          filesystem: { mode: "workspace-write", writableRoots: [], deniedPaths: ["~/.ssh"] },
-        },
-      }),
-      "win32",
-    )
-    expect(request.containment).toBe("processcontainer")
-    expect(request.filesystem).toEqual({
-      readwritePaths: [workspace, tmp],
-      readonlyPaths: [],
-      deniedPaths: [...PROTECTED.map((item) => path.join(workspace, item)), path.join(os.homedir(), ".ssh")],
-    })
-    expect(request.processContainer?.capabilities).toEqual(["internetClient"])
-    expect(request.network).toEqual({ egress: { default: "allow" } })
+    const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "universal-sandbox-test-")))
+    try {
+      const request = wireRequest(
+        input({
+          workspace: directory,
+          cwd: directory,
+          policy: {
+            ...defaultPolicy,
+            network: "allow",
+            filesystem: {
+              mode: "workspace-write",
+              writableRoots: [],
+              deniedPaths: [path.join(os.homedir(), ".ssh"), path.join(directory, "missing", "secret")],
+            },
+          },
+        }),
+        "win32",
+      )
+      expect(request.containment).toBe("processcontainer")
+      expect(request.filesystem).toEqual({
+        readwritePaths: [directory, tmp],
+        readonlyPaths: [],
+        // Denied paths whose parent directory exists are kept, even when the path
+        // itself is missing (ProcessContainer accepts those). A path whose parent is
+        // missing would abort every launch with ERROR_PATH_NOT_FOUND and is dropped.
+        deniedPaths: [
+          ...PROTECTED.map((item) => path.join(directory, item)),
+          path.join(os.homedir(), ".ssh"),
+        ],
+      })
+      expect(request.processContainer?.capabilities).toEqual(["internetClient"])
+      expect(request.network).toEqual({ egress: { default: "allow" } })
+      // ProcessContainer resolves the command line directly, so builtins need cmd.
+      expect(request.process.commandLine).toBe(`cmd.exe /d /s /c ${quote("echo hi", "win32")}`)
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
   })
 })
 
